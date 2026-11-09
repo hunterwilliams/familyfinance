@@ -114,14 +114,14 @@ Domain logic tests cover splits, settlement math, and effective balance before H
    - `WEB_BASE_URL` and `LINE_LOGIN_CALLBACK_URL`
    - Do **not** set `SKIP_AUTH=true`
 5. Ensure volumes persist: `postgres_data`, `receipts_data`
-6. Expose `web` service port (default 3000)
+6. Attach the public domain to the **web** service, container port **80**. Do not publish host port 3000 — Coolify's proxy reaches the container on the Compose network.
 
 Health checks are configured on `db`, `api`, and `web` services.
 
 ### Production checklist
 
 - [ ] Change `API_KEY` and `POSTGRES_PASSWORD` from defaults
-- [ ] Set `WEB_PORT` if needed
+- [ ] Point the domain at **web** (port 80), not **api**
 - [ ] Back up `postgres_data` volume regularly
 
 ## iOS app (opt-in capture)

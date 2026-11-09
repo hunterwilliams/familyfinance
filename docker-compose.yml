@@ -59,8 +59,10 @@ services:
     depends_on:
       api:
         condition: service_healthy
-    ports:
-      - "${WEB_PORT:-3000}:80"
+    # Coolify's proxy targets this port. Do not bind a host port (e.g. 3000:80);
+    # that conflicts with other apps on the same server.
+    expose:
+      - "80"
 
 volumes:
   postgres_data:
