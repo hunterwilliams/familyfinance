@@ -69,7 +69,8 @@ Callback URL: `{WEB_BASE_URL}/callback` (e.g. `https://finance.diverti.se/callba
 
 ## LINE Messaging bot
 
-Webhook: `POST {PUBLIC_API}/webhooks/line`  
+Webhook: `POST {WEB_BASE_URL}/webhooks/line`  
+(e.g. `https://finance.diverti.se/webhooks/line`). The web nginx proxies that path to the API, so you do not need a public API hostname.  
 Set this in the LINE Official Account / Messaging API console.
 
 Env: `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN`, `OPENAI_API_KEY`.
