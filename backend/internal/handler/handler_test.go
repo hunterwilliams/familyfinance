@@ -41,6 +41,18 @@ func TestAuthMiddlewareRequiresJWT(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
+func TestLineCallbackRouteRequiresCode(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	h := handler.New(nil, config.Config{SkipAuth: false})
+	h.Register(r)
+
+	req := httptest.NewRequest(http.MethodGet, "/callback", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
 func TestDevLoginDisabledWithoutSkip(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()

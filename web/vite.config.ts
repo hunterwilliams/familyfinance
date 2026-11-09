@@ -24,6 +24,10 @@ export default defineConfig(({ mode }) => {
           target: apiTarget,
           changeOrigin: true,
         },
+        '/callback': {
+          target: apiTarget,
+          changeOrigin: true,
+        },
       },
     },
   }

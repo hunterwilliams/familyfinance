@@ -49,7 +49,7 @@ func Load() Config {
 		OpenAIBaseURL:          os.Getenv("OPENAI_BASE_URL"),
 		LineLoginChannelID:     os.Getenv("LINE_LOGIN_CHANNEL_ID"),
 		LineLoginChannelSecret: os.Getenv("LINE_LOGIN_CHANNEL_SECRET"),
-		LineLoginCallbackURL:   getenv("LINE_LOGIN_CALLBACK_URL", "http://localhost:8080/api/v1/auth/line/callback"),
+		LineLoginCallbackURL:   getenv("LINE_LOGIN_CALLBACK_URL", "http://localhost:5173/callback"),
 		LineChannelSecret:      os.Getenv("LINE_CHANNEL_SECRET"),
 		LineChannelAccessToken: os.Getenv("LINE_CHANNEL_ACCESS_TOKEN"),
 	}

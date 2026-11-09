@@ -65,7 +65,7 @@ Local Docker (`docker-compose.override.yml`) sets `SKIP_AUTH=true` and `VITE_SKI
 
 Production uses **LINE Login**. Set `LINE_LOGIN_CHANNEL_ID`, `LINE_LOGIN_CHANNEL_SECRET`, `LINE_LOGIN_CALLBACK_URL` (must match LINE console), `WEB_BASE_URL` (where users land after login), and `JWT_SECRET`. **Never set `SKIP_AUTH=true` on Coolify.**
 
-Callback URL: `{PUBLIC_API}/api/v1/auth/line/callback`
+Callback URL: `{WEB_BASE_URL}/callback` (e.g. `https://finance.diverti.se/callback`). Register that exact URL in the LINE Login channel. The web container proxies `/callback` to the API.
 
 ## LINE Messaging bot
 

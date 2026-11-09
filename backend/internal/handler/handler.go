@@ -27,6 +27,7 @@ func New(svc *service.Service, cfg config.Config) *Handler {
 func (h *Handler) Register(r *gin.Engine) {
 	r.GET("/health", h.health)
 	r.POST("/webhooks/line", h.lineWebhook)
+	r.GET("/callback", h.lineLoginCallback)
 
 	authg := r.Group("/api/v1/auth")
 	{
