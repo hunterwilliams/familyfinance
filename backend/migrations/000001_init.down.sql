@@ -1,0 +1,12 @@
+DROP TABLE IF EXISTS savings_goals;
+DROP TABLE IF EXISTS settlements;
+DROP TABLE IF EXISTS cc_statement_balances;
+DROP TABLE IF EXISTS balance_snapshots;
+DROP TABLE IF EXISTS contributions;
+DROP TABLE IF EXISTS transaction_splits;
+DROP TABLE IF EXISTS transactions;
+DROP TABLE IF EXISTS categories;
+DROP TABLE IF EXISTS accounts;
+DROP TABLE IF EXISTS members;
+DROP TABLE IF EXISTS households;
+DROP TYPE IF EXISTS account_type;

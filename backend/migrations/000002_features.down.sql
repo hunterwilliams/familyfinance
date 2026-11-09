@@ -1,0 +1,10 @@
+DROP TABLE IF EXISTS pantry_items;
+DROP TABLE IF EXISTS list_items;
+DROP TABLE IF EXISTS lists;
+DROP TABLE IF EXISTS caregiver_hour_entries;
+DROP TABLE IF EXISTS caregivers;
+DROP TABLE IF EXISTS pending_confirmations;
+DROP TABLE IF EXISTS line_group_bindings;
+DROP TABLE IF EXISTS line_identities;
+DROP TABLE IF EXISTS household_settings;
+ALTER TABLE transactions DROP COLUMN IF EXISTS is_joint;

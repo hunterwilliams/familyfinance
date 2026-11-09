@@ -1,0 +1,56 @@
+# Auto-loaded by Docker Compose for local development (git-tracked).
+# Run once:  docker compose up --build
+# Then edit backend/ or web/ — Air and Vite reload automatically (no container restart).
+#
+# Production / Coolify: deploy docker-compose.yml only (no override).
+
+services:
+  db:
+    ports:
+      - "5433:5432"
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    command: ["air", "-c", ".air.docker.toml"]
+    restart: "no"
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./backend:/app
+      - /app/tmp
+      - go_mod_cache:/go/pkg/mod
+    environment:
+      API_KEY: dev-api-key
+      JWT_SECRET: dev-jwt-secret
+      SKIP_AUTH: "true"
+      GIN_MODE: debug
+      WEB_BASE_URL: http://localhost:5173
+      PUBLIC_BASE_URL: http://localhost:8081
+      LINE_LOGIN_CALLBACK_URL: http://localhost:8081/api/v1/auth/line/callback
+    healthcheck:
+      disable: true
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.dev
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+    restart: "no"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+    environment:
+      DEV_API_TARGET: http://api:8080
+      VITE_DEV_API_TARGET: http://api:8080
+      VITE_SKIP_AUTH: "true"
+      CHOKIDAR_USEPOLLING: "true"
+    depends_on:
+      api:
+        condition: service_started
+
+volumes:
+  go_mod_cache:

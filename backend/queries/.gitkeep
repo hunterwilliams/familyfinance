@@ -1,0 +1,2 @@
+-- sqlc queries placeholder; repository uses hand-written pgx for MVP.
+-- Run `sqlc generate` after adding queries here when expanding.
