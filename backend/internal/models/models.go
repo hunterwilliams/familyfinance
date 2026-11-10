@@ -93,8 +93,19 @@ type Caregiver struct {
 	HouseholdID      uuid.UUID `json:"household_id"`
 	Name             string    `json:"name"`
 	HourlyRateSatang int64     `json:"hourly_rate_satang"`
+	DefaultStartTime *string   `json:"default_start_time,omitempty"`
+	DefaultEndTime   *string   `json:"default_end_time,omitempty"`
+	DefaultWeekdays  []int     `json:"default_weekdays"`
 	Active           bool      `json:"active"`
 	CreatedAt        time.Time `json:"created_at"`
+}
+
+type PaidHoliday struct {
+	ID          uuid.UUID `json:"id"`
+	HouseholdID uuid.UUID `json:"household_id"`
+	Date        string    `json:"date"`
+	Name        string    `json:"name"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 type CaregiverHourEntry struct {
@@ -105,6 +116,7 @@ type CaregiverHourEntry struct {
 	StartTime   *string    `json:"start_time,omitempty"`
 	EndTime     *string    `json:"end_time,omitempty"`
 	Hours       float64    `json:"hours"`
+	Kind        string     `json:"kind"`
 	Note        string     `json:"note"`
 	CreatedAt   time.Time  `json:"created_at"`
 }

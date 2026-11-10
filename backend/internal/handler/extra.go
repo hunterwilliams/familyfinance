@@ -300,6 +300,26 @@ func (h *Handler) createCaregiver(c *gin.Context) {
 	c.JSON(http.StatusCreated, item)
 }
 
+func (h *Handler) updateCaregiver(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	var req models.Caregiver
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	req.ID = id
+	item, err := h.svc.UpdateCaregiver(c.Request.Context(), req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, item)
+}
+
 func (h *Handler) listCaregiverHours(c *gin.Context) {
 	month := c.Query("month")
 	if month == "" {
@@ -320,6 +340,7 @@ func (h *Handler) createCaregiverHours(c *gin.Context) {
 		StartTime   *string   `json:"start_time"`
 		EndTime     *string   `json:"end_time"`
 		Hours       float64   `json:"hours"`
+		Kind        string    `json:"kind"`
 		Note        string    `json:"note"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -337,13 +358,61 @@ func (h *Handler) createCaregiverHours(c *gin.Context) {
 		StartTime:   req.StartTime,
 		EndTime:     req.EndTime,
 		Hours:       req.Hours,
+		Kind:        req.Kind,
 		Note:        req.Note,
 	})
 	if err != nil {
+		if strings.Contains(err.Error(), "does not usually work") || strings.Contains(err.Error(), "paid holiday") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusCreated, item)
+}
+
+func (h *Handler) listPaidHolidays(c *gin.Context) {
+	items, err := h.svc.ListPaidHolidays(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, items)
+}
+
+func (h *Handler) createPaidHoliday(c *gin.Context) {
+	var req struct {
+		Date string `json:"date" binding:"required"`
+		Name string `json:"name"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	item, err := h.svc.CreatePaidHoliday(c.Request.Context(), req.Date, req.Name)
+	if err != nil {
+		if strings.Contains(err.Error(), "already") || strings.Contains(err.Error(), "YYYY-MM-DD") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, item)
+}
+
+func (h *Handler) deletePaidHoliday(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	if err := h.svc.DeletePaidHoliday(c.Request.Context(), id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 func (h *Handler) listLists(c *gin.Context) {

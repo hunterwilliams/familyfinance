@@ -84,6 +84,12 @@ main {
   font-size: 0.875rem;
 }
 
+.toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 .toolbar button {
   background: #4f46e5;
   color: #fff;
@@ -100,6 +106,29 @@ main {
   background: #fff;
   color: #374151;
   border-color: #d1d5db;
+}
+
+.day-toggles {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.day-toggles button,
+.toolbar .day-toggles button {
+  background: #fff;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  padding: 0.3rem 0.5rem;
+  min-width: 2.5rem;
+}
+
+.day-toggles button.on,
+.toolbar .day-toggles button.on {
+  background: #4f46e5;
+  color: #fff;
+  border-color: #4f46e5;
 }
 
 .grid-wrap {
@@ -142,6 +171,16 @@ main {
 .debt-list li {
   padding: 0.5rem 0;
   border-bottom: 1px solid #f3f4f6;
+}
+
+.debt-list button.secondary {
+  padding: 0.25rem 0.55rem;
+  background: #fff;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
 }
 
 .goal-bar {

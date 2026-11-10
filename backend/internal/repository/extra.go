@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -165,18 +166,15 @@ func (r *Repository) DeletePending(ctx context.Context, id uuid.UUID) error {
 }
 
 func (r *Repository) ListCaregivers(ctx context.Context, householdID uuid.UUID) ([]models.Caregiver, error) {
-	rows, err := r.pool.Query(ctx, `
-		SELECT id, household_id, name, hourly_rate_satang, active, created_at
-		FROM caregivers WHERE household_id = $1 ORDER BY name
-	`, householdID)
+	rows, err := r.pool.Query(ctx, caregiverSelect+` FROM caregivers WHERE household_id = $1 ORDER BY name`, householdID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	out := make([]models.Caregiver, 0)
 	for rows.Next() {
-		var c models.Caregiver
-		if err := rows.Scan(&c.ID, &c.HouseholdID, &c.Name, &c.HourlyRateSatang, &c.Active, &c.CreatedAt); err != nil {
+		c, err := scanCaregiver(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -184,31 +182,116 @@ func (r *Repository) ListCaregivers(ctx context.Context, householdID uuid.UUID) 
 	return out, rows.Err()
 }
 
+const caregiverSelect = `
+		SELECT id, household_id, name, hourly_rate_satang,
+		       default_start_time::text, default_end_time::text, default_weekdays, active, created_at`
+
+type caregiverRow interface {
+	Scan(dest ...any) error
+}
+
+func scanCaregiver(row caregiverRow) (models.Caregiver, error) {
+	var c models.Caregiver
+	var days []int32
+	err := row.Scan(&c.ID, &c.HouseholdID, &c.Name, &c.HourlyRateSatang, &c.DefaultStartTime, &c.DefaultEndTime, &days, &c.Active, &c.CreatedAt)
+	if err != nil {
+		return c, err
+	}
+	c.DefaultWeekdays = intSlice(days)
+	normalizeCaregiverClocks(&c)
+	return c, nil
+}
+
+func (r *Repository) GetCaregiver(ctx context.Context, householdID, id uuid.UUID) (*models.Caregiver, error) {
+	c, err := scanCaregiver(r.pool.QueryRow(ctx, caregiverSelect+` FROM caregivers WHERE household_id = $1 AND id = $2`, householdID, id))
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
 func (r *Repository) CreateCaregiver(ctx context.Context, c models.Caregiver) (models.Caregiver, error) {
-	err := r.pool.QueryRow(ctx, `
-		INSERT INTO caregivers (household_id, name, hourly_rate_satang, active)
-		VALUES ($1,$2,$3,$4)
-		RETURNING id, household_id, name, hourly_rate_satang, active, created_at
-	`, c.HouseholdID, c.Name, c.HourlyRateSatang, c.Active).Scan(
-		&c.ID, &c.HouseholdID, &c.Name, &c.HourlyRateSatang, &c.Active, &c.CreatedAt,
-	)
+	c, err := scanCaregiver(r.pool.QueryRow(ctx, `
+		INSERT INTO caregivers (household_id, name, hourly_rate_satang, default_start_time, default_end_time, default_weekdays, active)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)
+		RETURNING id, household_id, name, hourly_rate_satang,
+		          default_start_time::text, default_end_time::text, default_weekdays, active, created_at
+	`, c.HouseholdID, c.Name, c.HourlyRateSatang, c.DefaultStartTime, c.DefaultEndTime, int32Slice(c.DefaultWeekdays), c.Active))
 	return c, err
 }
 
+func (r *Repository) UpdateCaregiver(ctx context.Context, c models.Caregiver) (models.Caregiver, error) {
+	c, err := scanCaregiver(r.pool.QueryRow(ctx, `
+		UPDATE caregivers
+		SET name = $3, hourly_rate_satang = $4, default_start_time = $5, default_end_time = $6, default_weekdays = $7, active = $8
+		WHERE household_id = $1 AND id = $2
+		RETURNING id, household_id, name, hourly_rate_satang,
+		          default_start_time::text, default_end_time::text, default_weekdays, active, created_at
+	`, c.HouseholdID, c.ID, c.Name, c.HourlyRateSatang, c.DefaultStartTime, c.DefaultEndTime, int32Slice(c.DefaultWeekdays), c.Active))
+	if err == pgx.ErrNoRows {
+		return models.Caregiver{}, err
+	}
+	return c, err
+}
+
+func normalizeCaregiverClocks(c *models.Caregiver) {
+	c.DefaultStartTime = clockPtr(c.DefaultStartTime)
+	c.DefaultEndTime = clockPtr(c.DefaultEndTime)
+}
+
+func intSlice(in []int32) []int {
+	out := make([]int, len(in))
+	for i, v := range in {
+		out[i] = int(v)
+	}
+	return out
+}
+
+func int32Slice(in []int) []int32 {
+	out := make([]int32, len(in))
+	for i, v := range in {
+		out[i] = int32(v)
+	}
+	return out
+}
+
+func clockPtr(p *string) *string {
+	if p == nil {
+		return nil
+	}
+	s := strings.TrimSpace(*p)
+	if s == "" {
+		return nil
+	}
+	for _, layout := range []string{"15:04:05", "15:04"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			v := t.Format("15:04")
+			return &v
+		}
+	}
+	return &s
+}
+
 func (r *Repository) CreateHourEntry(ctx context.Context, e models.CaregiverHourEntry) (models.CaregiverHourEntry, error) {
+	if e.Kind == "" {
+		e.Kind = "extra"
+	}
 	err := r.pool.QueryRow(ctx, `
-		INSERT INTO caregiver_hour_entries (caregiver_id, household_id, work_date, start_time, end_time, hours, note)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)
-		RETURNING id, caregiver_id, household_id, work_date, start_time::text, end_time::text, hours, note, created_at
-	`, e.CaregiverID, e.HouseholdID, e.WorkDate, e.StartTime, e.EndTime, e.Hours, e.Note).Scan(
-		&e.ID, &e.CaregiverID, &e.HouseholdID, &e.WorkDate, &e.StartTime, &e.EndTime, &e.Hours, &e.Note, &e.CreatedAt,
+		INSERT INTO caregiver_hour_entries (caregiver_id, household_id, work_date, start_time, end_time, hours, kind, note)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		RETURNING id, caregiver_id, household_id, work_date, start_time::text, end_time::text, hours, kind, note, created_at
+	`, e.CaregiverID, e.HouseholdID, e.WorkDate, e.StartTime, e.EndTime, e.Hours, e.Kind, e.Note).Scan(
+		&e.ID, &e.CaregiverID, &e.HouseholdID, &e.WorkDate, &e.StartTime, &e.EndTime, &e.Hours, &e.Kind, &e.Note, &e.CreatedAt,
 	)
 	return e, err
 }
 
 func (r *Repository) ListHourEntries(ctx context.Context, householdID uuid.UUID, start, end time.Time) ([]models.CaregiverHourEntry, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, caregiver_id, household_id, work_date, start_time::text, end_time::text, hours, note, created_at
+		SELECT id, caregiver_id, household_id, work_date, start_time::text, end_time::text, hours, kind, note, created_at
 		FROM caregiver_hour_entries
 		WHERE household_id = $1 AND work_date >= $2 AND work_date < $3
 		ORDER BY work_date, created_at
@@ -220,7 +303,7 @@ func (r *Repository) ListHourEntries(ctx context.Context, householdID uuid.UUID,
 	out := make([]models.CaregiverHourEntry, 0)
 	for rows.Next() {
 		var e models.CaregiverHourEntry
-		if err := rows.Scan(&e.ID, &e.CaregiverID, &e.HouseholdID, &e.WorkDate, &e.StartTime, &e.EndTime, &e.Hours, &e.Note, &e.CreatedAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.CaregiverID, &e.HouseholdID, &e.WorkDate, &e.StartTime, &e.EndTime, &e.Hours, &e.Kind, &e.Note, &e.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
@@ -229,11 +312,7 @@ func (r *Repository) ListHourEntries(ctx context.Context, householdID uuid.UUID,
 }
 
 func (r *Repository) FindCaregiverByName(ctx context.Context, householdID uuid.UUID, name string) (*models.Caregiver, error) {
-	var c models.Caregiver
-	err := r.pool.QueryRow(ctx, `
-		SELECT id, household_id, name, hourly_rate_satang, active, created_at
-		FROM caregivers WHERE household_id = $1 AND LOWER(name) = LOWER($2) LIMIT 1
-	`, householdID, name).Scan(&c.ID, &c.HouseholdID, &c.Name, &c.HourlyRateSatang, &c.Active, &c.CreatedAt)
+	c, err := scanCaregiver(r.pool.QueryRow(ctx, caregiverSelect+` FROM caregivers WHERE household_id = $1 AND LOWER(name) = LOWER($2) LIMIT 1`, householdID, name))
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
@@ -241,6 +320,72 @@ func (r *Repository) FindCaregiverByName(ctx context.Context, householdID uuid.U
 		return nil, err
 	}
 	return &c, nil
+}
+
+func (r *Repository) CountPaidHolidays(ctx context.Context, householdID uuid.UUID) (int, error) {
+	var n int
+	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM paid_holidays WHERE household_id = $1`, householdID).Scan(&n)
+	return n, err
+}
+
+func (r *Repository) SeedPaidHolidays(ctx context.Context, householdID uuid.UUID, holidays []models.PaidHoliday) error {
+	for _, h := range holidays {
+		if _, err := r.pool.Exec(ctx, `
+			INSERT INTO paid_holidays (household_id, holiday_date, name)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (household_id, holiday_date) DO NOTHING
+		`, householdID, h.Date, h.Name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *Repository) ListPaidHolidays(ctx context.Context, householdID uuid.UUID) ([]models.PaidHoliday, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, household_id, holiday_date::text, name, created_at
+		FROM paid_holidays WHERE household_id = $1 ORDER BY holiday_date
+	`, householdID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]models.PaidHoliday, 0)
+	for rows.Next() {
+		var h models.PaidHoliday
+		var rawDate string
+		if err := rows.Scan(&h.ID, &h.HouseholdID, &rawDate, &h.Name, &h.CreatedAt); err != nil {
+			return nil, err
+		}
+		h.Date = rawDate[:min(10, len(rawDate))]
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
+func (r *Repository) CreatePaidHoliday(ctx context.Context, h models.PaidHoliday) (models.PaidHoliday, error) {
+	var rawDate string
+	err := r.pool.QueryRow(ctx, `
+		INSERT INTO paid_holidays (household_id, holiday_date, name)
+		VALUES ($1, $2, $3)
+		RETURNING id, household_id, holiday_date::text, name, created_at
+	`, h.HouseholdID, h.Date, h.Name).Scan(&h.ID, &h.HouseholdID, &rawDate, &h.Name, &h.CreatedAt)
+	if err != nil {
+		return models.PaidHoliday{}, err
+	}
+	h.Date = rawDate[:min(10, len(rawDate))]
+	return h, nil
+}
+
+func (r *Repository) DeletePaidHoliday(ctx context.Context, householdID, id uuid.UUID) error {
+	tag, err := r.pool.Exec(ctx, `DELETE FROM paid_holidays WHERE household_id = $1 AND id = $2`, householdID, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
 }
 
 func (r *Repository) ListLists(ctx context.Context, householdID uuid.UUID) ([]models.List, error) {

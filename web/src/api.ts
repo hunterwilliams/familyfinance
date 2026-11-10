@@ -140,7 +140,16 @@ export interface Caregiver {
   id: string;
   name: string;
   hourly_rate_satang: number;
+  default_start_time?: string;
+  default_end_time?: string;
+  default_weekdays?: number[];
   active: boolean;
+}
+
+export interface PaidHoliday {
+  id: string;
+  date: string;
+  name: string;
 }
 
 export interface HourEntry {
@@ -150,6 +159,7 @@ export interface HourEntry {
   start_time?: string;
   end_time?: string;
   hours: number;
+  kind?: string;
   note: string;
 }
 
@@ -251,11 +261,18 @@ export const api = {
     return request<ReceiptParse>('/api/v1/receipts/parse', { method: 'POST', body: fd });
   },
   getCaregivers: () => requestList<Caregiver>('/api/v1/caregivers'),
-  createCaregiver: (body: { name: string; hourly_rate_satang: number }) =>
+  createCaregiver: (body: { name: string; hourly_rate_satang: number; default_start_time?: string; default_end_time?: string; default_weekdays?: number[] }) =>
     request<Caregiver>('/api/v1/caregivers', { method: 'POST', body: JSON.stringify(body) }),
+  updateCaregiver: (id: string, body: Partial<Caregiver>) =>
+    request<Caregiver>(`/api/v1/caregivers/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   getCaregiverHours: (month: string) => requestList<HourEntry>(`/api/v1/caregiver-hours?month=${month}`),
   createCaregiverHours: (body: Record<string, unknown>) =>
     request<HourEntry>('/api/v1/caregiver-hours', { method: 'POST', body: JSON.stringify(body) }),
+  getPaidHolidays: () => requestList<PaidHoliday>('/api/v1/paid-holidays'),
+  createPaidHoliday: (body: { date: string; name?: string }) =>
+    request<PaidHoliday>('/api/v1/paid-holidays', { method: 'POST', body: JSON.stringify(body) }),
+  deletePaidHoliday: (id: string) =>
+    request<void>(`/api/v1/paid-holidays/${id}`, { method: 'DELETE' }),
   getLists: () => requestList<HouseholdList>('/api/v1/lists'),
   createList: (title: string) =>
     request<HouseholdList>('/api/v1/lists', { method: 'POST', body: JSON.stringify({ title }) }),

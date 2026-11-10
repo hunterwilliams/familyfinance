@@ -111,19 +111,31 @@ type ReceiptFields struct {
 	NamesVisible  []string `json:"names_visible"`
 }
 
-func (c *Client) ParseIntent(ctx context.Context, text string) (Intent, error) {
+func (c *Client) ParseIntent(ctx context.Context, text string, extraContext string) (Intent, error) {
 	prompt := `You extract household finance intents from English messages.
 Return JSON only with fields:
-kind: one of add_expense, nanny_hours, confirm, cancel, help, other
+kind: one of add_expense, nanny_hours, nanny_holiday, nanny_worked_holiday, confirm, cancel, help, other
 amount_thb: number
 description: string
 is_joint: boolean (true if paid from joint account / no reimbursement)
-date: YYYY-MM-DD if mentioned else empty
-caregiver: name if nanny hours
-start_time, end_time: HH:MM 24h if mentioned
+date: YYYY-MM-DD if mentioned (tomorrow/tmrw = next calendar day in Asia/Bangkok) else empty
+caregiver: nanny name if nanny hours; use the known name when the message says nanny
+start_time, end_time: HH:MM 24h
 hours: number if mentioned
 
-Message: ` + text
+For nanny_hours extra pay only (not the usual shift):
+- come early at a time: start_time = arrival, leave end_time empty
+- stay late until a time: end_time = leave time, leave start_time empty
+- an explicit extra range: set both start_time and end_time
+
+For nanny_holiday: they take a usual work day off (personal day off). Set caregiver and date only. Paid Thai government holidays do not create hours owed.
+For nanny_worked_holiday: they work on a paid government holiday and should be paid the usual shift as extra. Set caregiver and date.
+
+`
+	if strings.TrimSpace(extraContext) != "" {
+		prompt += extraContext + "\n\n"
+	}
+	prompt += "Message: " + text
 
 	raw, err := c.chat(ctx, []map[string]any{
 		{"role": "system", "content": "Return JSON only."},
