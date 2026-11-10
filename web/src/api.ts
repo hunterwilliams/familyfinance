@@ -32,11 +32,37 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     onUnauthorized?.();
   }
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || res.statusText);
+    const body = await res.text().catch(() => '');
+    throw new Error(httpErrorMessage(res.status, res.statusText, body));
   }
   if (res.status === 204) return undefined as T;
   return res.json();
+}
+
+function httpErrorMessage(status: number, statusText: string, body: string): string {
+  const trimmed = body.trim();
+  let fromJson = '';
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed) as { error?: string; message?: string };
+      fromJson = (parsed.error || parsed.message || '').trim();
+    } catch {
+      /* ignore */
+    }
+  }
+  const combined = `${fromJson} ${statusText} ${trimmed}`;
+  if (status === 413 || /too large/i.test(combined)) {
+    return 'Photo is too large for the server. Try a smaller JPEG — this version shrinks photos before upload.';
+  }
+  if (/invalid character/i.test(combined)) {
+    return 'Could not understand that receipt photo. Try a clearer JPEG or retake the picture.';
+  }
+  if (fromJson) return fromJson;
+  const stripped = trimmed.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  if (stripped && stripped.length < 200 && !/^<!doctype/i.test(stripped) && !/^html/i.test(stripped)) {
+    return stripped;
+  }
+  return statusText || `Request failed (${status})`;
 }
 
 async function requestList<T>(path: string): Promise<T[]> {

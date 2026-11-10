@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import TransactionGrid from './TransactionGrid';
 import TransactionList from './TransactionList';
 import { api, type Account, type Category, type Member, type Transaction } from '../api';
+import { prepareReceiptImage } from '../receiptImage';
 
 interface Props {
   members: Member[];
@@ -21,6 +22,7 @@ export default function TransactionsPanel({ members, accounts, categories, onAcc
   const [categoryId, setCategoryId] = useState('');
   const [draft, setDraft] = useState<{ merchant?: string; date?: string; amount_satang?: number; paid_by?: string } | null>(null);
   const [parsing, setParsing] = useState(false);
+  const [notice, setNotice] = useState<{ tone: 'info' | 'ok' | 'error'; text: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -59,6 +61,7 @@ export default function TransactionsPanel({ members, accounts, categories, onAcc
       return;
     }
     setError('');
+    setNotice(null);
     await api.createTransaction({
       account_id: accountId || null,
       category_id: categoryId || undefined,
@@ -79,8 +82,14 @@ export default function TransactionsPanel({ members, accounts, categories, onAcc
     setError('');
     setDraft(null);
     setParsing(true);
+    setNotice({ tone: 'info', text: `Preparing photo… (${file.name || 'image'}, ${(file.size / (1024 * 1024)).toFixed(1)} MB)` });
     try {
-      const parsed = await api.parseReceipt(file);
+      const prepared = await prepareReceiptImage(file);
+      setNotice({
+        tone: 'info',
+        text: prepared.note ? `Reading receipt… ${prepared.note}` : 'Reading receipt… this can take a few seconds.',
+      });
+      const parsed = await api.parseReceipt(prepared.file);
       if (parsed.merchant) setDesc(parsed.merchant);
       if (parsed.amount_satang) setAmount(String(parsed.amount_satang / 100));
       let paidByLabel = 'payer not matched';
@@ -94,9 +103,12 @@ export default function TransactionsPanel({ members, accounts, categories, onAcc
       if (parsed.account_holder) {
         paidByLabel += ` (slip: ${parsed.account_holder})`;
       }
+      const summary = `Receipt suggestion loaded${paidByLabel ? ` — ${paidByLabel}` : ''} — review and add.`;
       setDraft({ ...parsed, paid_by: paidByLabel });
+      setNotice({ tone: 'ok', text: summary });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Parse failed');
+      const text = e instanceof Error && e.message ? e.message : 'Could not read that receipt.';
+      setNotice({ tone: 'error', text });
     } finally {
       setParsing(false);
     }
@@ -110,15 +122,10 @@ export default function TransactionsPanel({ members, accounts, categories, onAcc
         <button type="button" className={view === 'grid' ? '' : 'secondary'} onClick={() => setView('grid')}>Grid</button>
       </div>
       {error && <p className="error">{error}</p>}
-      {parsing && (
-        <p className="processing" aria-live="polite">
-          <span className="spinner" aria-hidden="true" />
-          Reading receipt…
-        </p>
-      )}
-      {draft && !parsing && (
-        <p className="success">
-          Receipt suggestion loaded{draft.paid_by ? ` — ${draft.paid_by}` : ''} — review and add.
+      {notice && (
+        <p className={`notice ${notice.tone}`} role="status" aria-live="polite">
+          {parsing && <span className="spinner" aria-hidden="true" />}
+          {notice.text}
         </p>
       )}
       <div className="toolbar">

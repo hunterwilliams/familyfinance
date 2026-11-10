@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -201,8 +202,14 @@ func (h *Handler) lineCreds(c *gin.Context) (secret, token string) {
 }
 
 func (h *Handler) parseReceipt(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 10<<20)
 	file, err := c.FormFile("file")
 	if err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) || strings.Contains(strings.ToLower(err.Error()), "too large") {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "Photo is too large. Use an image under 2 MB, or a smaller JPEG."})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": "file required"})
 		return
 	}

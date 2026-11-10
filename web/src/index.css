@@ -178,6 +178,30 @@ main {
   font-size: 0.875rem;
 }
 
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+.notice.info,
+.notice.processing {
+  background: #eef2ff;
+  color: #3730a3;
+}
+.notice.ok {
+  background: #ecfdf5;
+  color: #047857;
+}
+.notice.error {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
 .muted { color: #6b7280; font-size: 0.875rem; }
 
 .login-wrap {

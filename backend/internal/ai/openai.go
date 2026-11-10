@@ -160,7 +160,7 @@ func (c *Client) ParseReceiptImage(ctx context.Context, imageBase64, mime string
 	}
 	var f ReceiptFields
 	if err := json.Unmarshal([]byte(extractJSON(raw)), &f); err != nil {
-		return ReceiptFields{}, err
+		return ReceiptFields{}, fmt.Errorf("could not understand that receipt photo. Try a clearer JPEG or retake the picture")
 	}
 	return f, nil
 }

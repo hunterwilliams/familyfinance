@@ -46,6 +46,7 @@ func main() {
 	}
 
 	r := gin.New()
+	r.MaxMultipartMemory = 12 << 20
 	r.Use(gin.Recovery())
 	r.Use(gin.Logger())
 
