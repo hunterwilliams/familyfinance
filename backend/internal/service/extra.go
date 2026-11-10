@@ -294,7 +294,14 @@ func (s *Service) CreateListItem(ctx context.Context, listID uuid.UUID, title st
 }
 
 func (s *Service) UpdateListItem(ctx context.Context, item models.ListItem) (models.ListItem, error) {
-	return s.repo.UpdateListItem(ctx, item)
+	updated, err := s.repo.UpdateListItem(ctx, item)
+	if err != nil {
+		return models.ListItem{}, err
+	}
+	if err := applyListDoneToPantry(ctx, s.repo, updated); err != nil {
+		return models.ListItem{}, err
+	}
+	return updated, nil
 }
 
 func (s *Service) ListPantry(ctx context.Context) ([]models.PantryItem, error) {
@@ -310,6 +317,49 @@ func (s *Service) CreatePantry(ctx context.Context, p models.PantryItem) (models
 	if err != nil {
 		return models.PantryItem{}, err
 	}
+	if p.Status == "" {
+		p.Status = models.PantryOnHand
+	}
+	if p.Status != models.PantryOnHand && p.Status != models.PantryNeed {
+		return models.PantryItem{}, fmt.Errorf("status must be on_hand or need")
+	}
 	p.HouseholdID = h.ID
-	return s.repo.CreatePantry(ctx, p)
+	created, err := s.repo.CreatePantry(ctx, p)
+	if err != nil {
+		return models.PantryItem{}, err
+	}
+	if err := syncShoppingItem(ctx, s.repo, h.ID, created); err != nil {
+		return models.PantryItem{}, err
+	}
+	return created, nil
+}
+
+func (s *Service) UpdatePantry(ctx context.Context, p models.PantryItem) (models.PantryItem, error) {
+	h, err := s.EnsureHousehold(ctx)
+	if err != nil {
+		return models.PantryItem{}, err
+	}
+	existing, err := s.repo.GetPantry(ctx, h.ID, p.ID)
+	if err != nil {
+		return models.PantryItem{}, err
+	}
+	if p.Name != "" {
+		existing.Name = p.Name
+	}
+	if p.Status != "" {
+		if p.Status != models.PantryOnHand && p.Status != models.PantryNeed && p.Status != models.PantryBought {
+			return models.PantryItem{}, fmt.Errorf("invalid pantry status")
+		}
+		existing.Status = p.Status
+	}
+	existing.ExpiresOn = p.ExpiresOn
+	existing.NeededBy = p.NeededBy
+	updated, err := s.repo.UpdatePantry(ctx, existing)
+	if err != nil {
+		return models.PantryItem{}, err
+	}
+	if err := syncShoppingItem(ctx, s.repo, h.ID, updated); err != nil {
+		return models.PantryItem{}, err
+	}
+	return updated, nil
 }

@@ -121,28 +121,42 @@ type CaregiverHourEntry struct {
 	CreatedAt   time.Time  `json:"created_at"`
 }
 
+const (
+	ListKindCustom   = "custom"
+	ListKindShopping = "shopping"
+
+	PantryOnHand = "on_hand"
+	PantryNeed   = "need"
+	PantryBought = "bought"
+)
+
 type List struct {
-	ID          uuid.UUID `json:"id"`
-	HouseholdID uuid.UUID `json:"household_id"`
-	Title       string    `json:"title"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID          uuid.UUID  `json:"id"`
+	HouseholdID uuid.UUID  `json:"household_id"`
+	Title       string     `json:"title"`
+	Kind        string     `json:"kind"`
+	CreatedAt   time.Time  `json:"created_at"`
 	Items       []ListItem `json:"items,omitempty"`
 }
 
 type ListItem struct {
-	ID        uuid.UUID `json:"id"`
-	ListID    uuid.UUID `json:"list_id"`
-	Title     string    `json:"title"`
-	Done      bool      `json:"done"`
-	SortOrder int       `json:"sort_order"`
-	CreatedAt time.Time `json:"created_at"`
+	ID           uuid.UUID  `json:"id"`
+	ListID       uuid.UUID  `json:"list_id"`
+	Title        string     `json:"title"`
+	Done         bool       `json:"done"`
+	SortOrder    int        `json:"sort_order"`
+	CreatedAt    time.Time  `json:"created_at"`
+	PantryItemID *uuid.UUID `json:"pantry_item_id,omitempty"`
+	NeededBy     *time.Time `json:"needed_by,omitempty"`
 }
 
 type PantryItem struct {
 	ID          uuid.UUID  `json:"id"`
 	HouseholdID uuid.UUID  `json:"household_id"`
 	Name        string     `json:"name"`
+	Status      string     `json:"status"`
 	ExpiresOn   *time.Time `json:"expires_on,omitempty"`
+	NeededBy    *time.Time `json:"needed_by,omitempty"`
 	Notes       string     `json:"notes"`
 	RebuyHint   string     `json:"rebuy_hint"`
 	CreatedAt   time.Time  `json:"created_at"`

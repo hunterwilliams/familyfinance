@@ -91,8 +91,8 @@ In a **group**, the bot can bind on join (`/bind`). Unmapped users reply `/iam 1
 | `GET /reports/effective-balance` | SCB effective balance |
 | `GET/POST /caregivers`, `PATCH /caregivers/:id`, `/caregiver-hours` | Extra nanny hours (usual hours/days; personal holidays offset extra) |
 | `GET/POST/DELETE /paid-holidays` | Paid Thai gov holidays (no hours owed unless worked) |
-| `GET/POST /lists` | Household lists |
-| `GET/POST /pantry-items` | Expiring items |
+| `GET/POST /lists` | Household lists (shopping list is created when you add a need-to-buy pantry item) |
+| `GET/POST /pantry-items`, `PATCH /pantry-items/:id` | On-hand / expiring items and need-to-buy (mirrors onto Shopping) |
 
 ## Testing (TDD)
 

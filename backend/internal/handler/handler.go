@@ -95,6 +95,7 @@ func (h *Handler) Register(r *gin.Engine) {
 
 		v1.GET("/pantry-items", h.listPantry)
 		v1.POST("/pantry-items", h.createPantry)
+		v1.PATCH("/pantry-items/:id", h.updatePantry)
 	}
 }
 

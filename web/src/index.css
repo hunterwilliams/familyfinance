@@ -321,6 +321,14 @@ main {
 }
 .check-list { list-style: none; padding: 0; }
 .check-list label { display: flex; gap: 0.5rem; align-items: center; }
+.pantry-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+.muted { color: #6b7280; font-size: 0.875rem; }
+.panel h3 { font-size: 1rem; margin: 1.25rem 0 0.5rem; }
 .file-btn {
   border: 1px solid #d1d5db;
   padding: 0.45rem 0.75rem;

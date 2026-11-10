@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, type HouseholdList } from '../api';
+import { api, needByLabel, type HouseholdList } from '../api';
 
 export default function ListsPanel() {
   const [lists, setLists] = useState<HouseholdList[]>([]);
@@ -36,6 +36,7 @@ export default function ListsPanel() {
                     }}
                   />
                   {i.title}
+                  {i.needed_by ? <span className="muted"> — {needByLabel(i.needed_by)}</span> : null}
                 </label>
               </li>
             ))}

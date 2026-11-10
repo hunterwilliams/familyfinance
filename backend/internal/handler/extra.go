@@ -492,10 +492,23 @@ func (h *Handler) listPantry(c *gin.Context) {
 	c.JSON(http.StatusOK, items)
 }
 
+func parseOptionalDate(raw *string, field string) (*time.Time, error) {
+	if raw == nil || *raw == "" {
+		return nil, nil
+	}
+	d, err := time.Parse("2006-01-02", *raw)
+	if err != nil {
+		return nil, fmt.Errorf("%s must be YYYY-MM-DD", field)
+	}
+	return &d, nil
+}
+
 func (h *Handler) createPantry(c *gin.Context) {
 	var req struct {
 		Name      string  `json:"name" binding:"required"`
+		Status    string  `json:"status"`
 		ExpiresOn *string `json:"expires_on"`
+		NeededBy  *string `json:"needed_by"`
 		Notes     string  `json:"notes"`
 		RebuyHint string  `json:"rebuy_hint"`
 	}
@@ -503,14 +516,17 @@ func (h *Handler) createPantry(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	p := models.PantryItem{Name: req.Name, Notes: req.Notes, RebuyHint: req.RebuyHint}
-	if req.ExpiresOn != nil && *req.ExpiresOn != "" {
-		d, err := time.Parse("2006-01-02", *req.ExpiresOn)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "expires_on must be YYYY-MM-DD"})
-			return
-		}
-		p.ExpiresOn = &d
+	p := models.PantryItem{Name: req.Name, Status: req.Status, Notes: req.Notes, RebuyHint: req.RebuyHint}
+	var err error
+	p.ExpiresOn, err = parseOptionalDate(req.ExpiresOn, "expires_on")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	p.NeededBy, err = parseOptionalDate(req.NeededBy, "needed_by")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 	item, err := h.svc.CreatePantry(c.Request.Context(), p)
 	if err != nil {
@@ -518,4 +534,39 @@ func (h *Handler) createPantry(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, item)
+}
+
+func (h *Handler) updatePantry(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	var req struct {
+		Name      string  `json:"name"`
+		Status    string  `json:"status"`
+		ExpiresOn *string `json:"expires_on"`
+		NeededBy  *string `json:"needed_by"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	p := models.PantryItem{ID: id, Name: req.Name, Status: req.Status}
+	p.ExpiresOn, err = parseOptionalDate(req.ExpiresOn, "expires_on")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	p.NeededBy, err = parseOptionalDate(req.NeededBy, "needed_by")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	item, err := h.svc.UpdatePantry(c.Request.Context(), p)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, item)
 }

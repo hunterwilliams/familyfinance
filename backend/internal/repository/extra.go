@@ -388,8 +388,34 @@ func (r *Repository) DeletePaidHoliday(ctx context.Context, householdID, id uuid
 	return nil
 }
 
+const listItemSelect = `
+	SELECT i.id, i.list_id, i.title, i.done, i.sort_order, i.created_at, i.pantry_item_id, p.needed_by
+	FROM list_items i
+	LEFT JOIN pantry_items p ON p.id = i.pantry_item_id
+`
+
+type scanner interface {
+	Scan(dest ...any) error
+}
+
+func scanListItem(row scanner) (models.ListItem, error) {
+	var i models.ListItem
+	err := row.Scan(&i.ID, &i.ListID, &i.Title, &i.Done, &i.SortOrder, &i.CreatedAt, &i.PantryItemID, &i.NeededBy)
+	return i, err
+}
+
+func scanPantry(row scanner) (models.PantryItem, error) {
+	var p models.PantryItem
+	err := row.Scan(&p.ID, &p.HouseholdID, &p.Name, &p.Status, &p.ExpiresOn, &p.NeededBy, &p.Notes, &p.RebuyHint, &p.CreatedAt)
+	return p, err
+}
+
 func (r *Repository) ListLists(ctx context.Context, householdID uuid.UUID) ([]models.List, error) {
-	rows, err := r.pool.Query(ctx, `SELECT id, household_id, title, created_at FROM lists WHERE household_id = $1 ORDER BY created_at`, householdID)
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, household_id, title, kind, created_at
+		FROM lists WHERE household_id = $1
+		ORDER BY CASE WHEN kind = 'shopping' THEN 0 ELSE 1 END, created_at
+	`, householdID)
 	if err != nil {
 		return nil, err
 	}
@@ -397,7 +423,7 @@ func (r *Repository) ListLists(ctx context.Context, householdID uuid.UUID) ([]mo
 	out := make([]models.List, 0)
 	for rows.Next() {
 		var l models.List
-		if err := rows.Scan(&l.ID, &l.HouseholdID, &l.Title, &l.CreatedAt); err != nil {
+		if err := rows.Scan(&l.ID, &l.HouseholdID, &l.Title, &l.Kind, &l.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, l)
@@ -406,25 +432,38 @@ func (r *Repository) ListLists(ctx context.Context, householdID uuid.UUID) ([]mo
 }
 
 func (r *Repository) CreateList(ctx context.Context, l models.List) (models.List, error) {
+	if l.Kind == "" {
+		l.Kind = models.ListKindCustom
+	}
 	err := r.pool.QueryRow(ctx, `
-		INSERT INTO lists (household_id, title) VALUES ($1,$2)
-		RETURNING id, household_id, title, created_at
-	`, l.HouseholdID, l.Title).Scan(&l.ID, &l.HouseholdID, &l.Title, &l.CreatedAt)
+		INSERT INTO lists (household_id, title, kind) VALUES ($1,$2,$3)
+		RETURNING id, household_id, title, kind, created_at
+	`, l.HouseholdID, l.Title, l.Kind).Scan(&l.ID, &l.HouseholdID, &l.Title, &l.Kind, &l.CreatedAt)
+	return l, err
+}
+
+func (r *Repository) EnsureShoppingList(ctx context.Context, householdID uuid.UUID) (models.List, error) {
+	var l models.List
+	err := r.pool.QueryRow(ctx, `
+		INSERT INTO lists (household_id, title, kind)
+		VALUES ($1, 'Shopping', 'shopping')
+		ON CONFLICT (household_id) WHERE kind = 'shopping'
+		DO UPDATE SET title = lists.title
+		RETURNING id, household_id, title, kind, created_at
+	`, householdID).Scan(&l.ID, &l.HouseholdID, &l.Title, &l.Kind, &l.CreatedAt)
 	return l, err
 }
 
 func (r *Repository) ListItems(ctx context.Context, listID uuid.UUID) ([]models.ListItem, error) {
-	rows, err := r.pool.Query(ctx, `
-		SELECT id, list_id, title, done, sort_order, created_at FROM list_items WHERE list_id = $1 ORDER BY sort_order, created_at
-	`, listID)
+	rows, err := r.pool.Query(ctx, listItemSelect+` WHERE i.list_id = $1 ORDER BY i.sort_order, i.created_at`, listID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	out := make([]models.ListItem, 0)
 	for rows.Next() {
-		var i models.ListItem
-		if err := rows.Scan(&i.ID, &i.ListID, &i.Title, &i.Done, &i.SortOrder, &i.CreatedAt); err != nil {
+		i, err := scanListItem(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, i)
@@ -432,26 +471,45 @@ func (r *Repository) ListItems(ctx context.Context, listID uuid.UUID) ([]models.
 	return out, rows.Err()
 }
 
+func (r *Repository) GetListItem(ctx context.Context, id uuid.UUID) (models.ListItem, error) {
+	return scanListItem(r.pool.QueryRow(ctx, listItemSelect+` WHERE i.id = $1`, id))
+}
+
+func (r *Repository) GetListItemByPantryID(ctx context.Context, pantryID uuid.UUID) (*models.ListItem, error) {
+	i, err := scanListItem(r.pool.QueryRow(ctx, listItemSelect+` WHERE i.pantry_item_id = $1`, pantryID))
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &i, nil
+}
+
 func (r *Repository) CreateListItem(ctx context.Context, i models.ListItem) (models.ListItem, error) {
-	err := r.pool.QueryRow(ctx, `
-		INSERT INTO list_items (list_id, title, done, sort_order) VALUES ($1,$2,$3,$4)
-		RETURNING id, list_id, title, done, sort_order, created_at
-	`, i.ListID, i.Title, i.Done, i.SortOrder).Scan(&i.ID, &i.ListID, &i.Title, &i.Done, &i.SortOrder, &i.CreatedAt)
-	return i, err
+	return scanListItem(r.pool.QueryRow(ctx, `
+		INSERT INTO list_items (list_id, title, done, sort_order, pantry_item_id)
+		VALUES ($1,$2,$3,$4,$5)
+		RETURNING id, list_id, title, done, sort_order, created_at, pantry_item_id,
+			(SELECT needed_by FROM pantry_items WHERE id = $5)
+	`, i.ListID, i.Title, i.Done, i.SortOrder, i.PantryItemID))
 }
 
 func (r *Repository) UpdateListItem(ctx context.Context, i models.ListItem) (models.ListItem, error) {
-	err := r.pool.QueryRow(ctx, `
+	return scanListItem(r.pool.QueryRow(ctx, `
 		UPDATE list_items SET title=$2, done=$3 WHERE id=$1
-		RETURNING id, list_id, title, done, sort_order, created_at
-	`, i.ID, i.Title, i.Done).Scan(&i.ID, &i.ListID, &i.Title, &i.Done, &i.SortOrder, &i.CreatedAt)
-	return i, err
+		RETURNING id, list_id, title, done, sort_order, created_at, pantry_item_id,
+			(SELECT needed_by FROM pantry_items WHERE id = list_items.pantry_item_id)
+	`, i.ID, i.Title, i.Done))
 }
 
 func (r *Repository) ListPantry(ctx context.Context, householdID uuid.UUID) ([]models.PantryItem, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, household_id, name, expires_on, notes, rebuy_hint, created_at
-		FROM pantry_items WHERE household_id = $1 ORDER BY expires_on NULLS LAST, name
+		SELECT id, household_id, name, status, expires_on, needed_by, notes, rebuy_hint, created_at
+		FROM pantry_items
+		WHERE household_id = $1 AND status <> 'bought'
+		ORDER BY CASE WHEN status = 'need' THEN 1 ELSE 0 END,
+			expires_on NULLS LAST, needed_by NULLS LAST, name
 	`, householdID)
 	if err != nil {
 		return nil, err
@@ -459,8 +517,8 @@ func (r *Repository) ListPantry(ctx context.Context, householdID uuid.UUID) ([]m
 	defer rows.Close()
 	out := make([]models.PantryItem, 0)
 	for rows.Next() {
-		var p models.PantryItem
-		if err := rows.Scan(&p.ID, &p.HouseholdID, &p.Name, &p.ExpiresOn, &p.Notes, &p.RebuyHint, &p.CreatedAt); err != nil {
+		p, err := scanPantry(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -468,13 +526,40 @@ func (r *Repository) ListPantry(ctx context.Context, householdID uuid.UUID) ([]m
 	return out, rows.Err()
 }
 
+func (r *Repository) GetPantry(ctx context.Context, householdID, id uuid.UUID) (models.PantryItem, error) {
+	return scanPantry(r.pool.QueryRow(ctx, `
+		SELECT id, household_id, name, status, expires_on, needed_by, notes, rebuy_hint, created_at
+		FROM pantry_items WHERE household_id = $1 AND id = $2
+	`, householdID, id))
+}
+
 func (r *Repository) CreatePantry(ctx context.Context, p models.PantryItem) (models.PantryItem, error) {
-	err := r.pool.QueryRow(ctx, `
-		INSERT INTO pantry_items (household_id, name, expires_on, notes, rebuy_hint)
-		VALUES ($1,$2,$3,$4,$5)
-		RETURNING id, household_id, name, expires_on, notes, rebuy_hint, created_at
-	`, p.HouseholdID, p.Name, p.ExpiresOn, p.Notes, p.RebuyHint).Scan(
-		&p.ID, &p.HouseholdID, &p.Name, &p.ExpiresOn, &p.Notes, &p.RebuyHint, &p.CreatedAt,
-	)
-	return p, err
+	if p.Status == "" {
+		p.Status = models.PantryOnHand
+	}
+	return scanPantry(r.pool.QueryRow(ctx, `
+		INSERT INTO pantry_items (household_id, name, status, expires_on, needed_by, notes, rebuy_hint)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)
+		RETURNING id, household_id, name, status, expires_on, needed_by, notes, rebuy_hint, created_at
+	`, p.HouseholdID, p.Name, p.Status, p.ExpiresOn, p.NeededBy, p.Notes, p.RebuyHint))
+}
+
+func (r *Repository) UpdatePantry(ctx context.Context, p models.PantryItem) (models.PantryItem, error) {
+	return scanPantry(r.pool.QueryRow(ctx, `
+		UPDATE pantry_items
+		SET name=$3, status=$4, expires_on=$5, needed_by=$6, notes=$7, rebuy_hint=$8
+		WHERE household_id=$1 AND id=$2
+		RETURNING id, household_id, name, status, expires_on, needed_by, notes, rebuy_hint, created_at
+	`, p.HouseholdID, p.ID, p.Name, p.Status, p.ExpiresOn, p.NeededBy, p.Notes, p.RebuyHint))
+}
+
+func (r *Repository) UpdatePantryStatus(ctx context.Context, id uuid.UUID, status string) error {
+	tag, err := r.pool.Exec(ctx, `UPDATE pantry_items SET status=$2 WHERE id=$1`, id, status)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
 }

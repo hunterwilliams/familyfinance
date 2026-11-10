@@ -168,18 +168,23 @@ export interface ListItem {
   list_id: string;
   title: string;
   done: boolean;
+  pantry_item_id?: string;
+  needed_by?: string;
 }
 
 export interface HouseholdList {
   id: string;
   title: string;
+  kind?: string;
   items?: ListItem[];
 }
 
 export interface PantryItem {
   id: string;
   name: string;
+  status: string;
   expires_on?: string;
+  needed_by?: string;
   notes: string;
   rebuy_hint: string;
 }
@@ -283,7 +288,20 @@ export const api = {
   getPantry: () => requestList<PantryItem>('/api/v1/pantry-items'),
   createPantry: (body: Record<string, unknown>) =>
     request<PantryItem>('/api/v1/pantry-items', { method: 'POST', body: JSON.stringify(body) }),
+  updatePantry: (id: string, body: Record<string, unknown>) =>
+    request<PantryItem>(`/api/v1/pantry-items/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
 };
+
+export function needByLabel(iso?: string): string {
+  if (!iso) return '';
+  const day = new Date(`${iso.slice(0, 10)}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Math.round((day.getTime() - today.getTime()) / 86400000);
+  if (days <= 0) return 'need now';
+  if (days === 1) return 'in 1 day';
+  return `in ${days} days`;
+}
 
 export function formatTHB(satang: number): string {
   return new Intl.NumberFormat('en-TH', { style: 'currency', currency: 'THB' }).format(satang / 100);
