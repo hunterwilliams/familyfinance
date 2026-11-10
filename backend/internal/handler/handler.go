@@ -16,8 +16,8 @@ import (
 )
 
 type Handler struct {
-	svc         *service.Service
-	cfg         config.Config
+	svc *service.Service
+	cfg config.Config
 }
 
 func New(svc *service.Service, cfg config.Config) *Handler {
@@ -76,6 +76,8 @@ func (h *Handler) Register(r *gin.Engine) {
 
 		v1.GET("/settings", h.getSettings)
 		v1.PATCH("/settings", h.patchSettings)
+		v1.POST("/settings/test-ai", h.testAI)
+		v1.POST("/settings/test-line", h.testLine)
 
 		v1.GET("/caregivers", h.listCaregivers)
 		v1.POST("/caregivers", h.createCaregiver)
@@ -276,16 +278,16 @@ func (h *Handler) createTransaction(c *gin.Context) {
 func (h *Handler) bulkUpdateTransactions(c *gin.Context) {
 	var req struct {
 		Updates []struct {
-			ID              uuid.UUID       `json:"id" binding:"required"`
-			AccountID       *uuid.UUID      `json:"account_id"`
-			CategoryID      *uuid.UUID      `json:"category_id"`
-			PaidByMemberID  *uuid.UUID      `json:"paid_by_member_id"`
-			IsJoint         *bool           `json:"is_joint"`
-			TransactionDate *string         `json:"transaction_date"`
-			Description     *string         `json:"description"`
-			AmountSatang    *int64          `json:"amount_satang"`
-			Splits          []models.Split  `json:"splits"`
-			UpdateSplits    bool            `json:"update_splits"`
+			ID              uuid.UUID      `json:"id" binding:"required"`
+			AccountID       *uuid.UUID     `json:"account_id"`
+			CategoryID      *uuid.UUID     `json:"category_id"`
+			PaidByMemberID  *uuid.UUID     `json:"paid_by_member_id"`
+			IsJoint         *bool          `json:"is_joint"`
+			TransactionDate *string        `json:"transaction_date"`
+			Description     *string        `json:"description"`
+			AmountSatang    *int64         `json:"amount_satang"`
+			Splits          []models.Split `json:"splits"`
+			UpdateSplits    bool           `json:"update_splits"`
 		} `json:"updates" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -302,9 +304,9 @@ func (h *Handler) bulkUpdateTransactions(c *gin.Context) {
 			PaidByMemberID: u.PaidByMemberID,
 			IsJoint:        u.IsJoint,
 			Description:    u.Description,
-			AmountSatang: u.AmountSatang,
-			Splits:       u.Splits,
-			UpdateSplits: u.UpdateSplits,
+			AmountSatang:   u.AmountSatang,
+			Splits:         u.Splits,
+			UpdateSplits:   u.UpdateSplits,
 		}
 		if u.TransactionDate != nil {
 			d, err := time.Parse("2006-01-02", *u.TransactionDate)

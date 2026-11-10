@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/base64"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hunterwilliams/familyfinance/internal/ai"
 	"github.com/hunterwilliams/familyfinance/internal/domain/namematch"
+	"github.com/hunterwilliams/familyfinance/internal/linebot"
 	"github.com/hunterwilliams/familyfinance/internal/models"
 	"github.com/rs/zerolog/log"
 )
@@ -24,7 +26,24 @@ func (h *Handler) getSettings(c *gin.Context) {
 	if h.cfg.OpenAIAPIKey != "" {
 		s.HasOpenAIKey = true
 	}
+	if h.cfg.LineChannelSecret != "" {
+		s.HasLineSecret = true
+	}
+	if h.cfg.LineChannelAccessToken != "" {
+		s.HasLineToken = true
+	}
 	c.JSON(http.StatusOK, s)
+}
+
+func omitBlank(p *string) *string {
+	if p == nil {
+		return nil
+	}
+	s := strings.TrimSpace(*p)
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 func (h *Handler) patchSettings(c *gin.Context) {
@@ -38,10 +57,15 @@ func (h *Handler) patchSettings(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	req.OpenAIModel = omitBlank(req.OpenAIModel)
+	req.LineChannelSecret = omitBlank(req.LineChannelSecret)
+	req.LineChannelAccessToken = omitBlank(req.LineChannelAccessToken)
 	if req.OpenAIAPIKey != nil {
 		n := ai.NormalizeKey(*req.OpenAIAPIKey)
-		req.OpenAIAPIKey = &n
-		if n != "" {
+		if n == "" {
+			req.OpenAIAPIKey = nil
+		} else {
+			req.OpenAIAPIKey = &n
 			model := ""
 			if req.OpenAIModel != nil {
 				model = *req.OpenAIModel
@@ -61,6 +85,79 @@ func (h *Handler) patchSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, s)
 }
 
+func (h *Handler) testAI(c *gin.Context) {
+	var req struct {
+		OpenAIAPIKey *string `json:"openai_api_key"`
+		OpenAIModel  *string `json:"openai_model"`
+		Check        string  `json:"check"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	key, model := h.openaiCreds(c)
+	if k := omitBlank(req.OpenAIAPIKey); k != nil {
+		key = ai.NormalizeKey(*k)
+	}
+	if m := omitBlank(req.OpenAIModel); m != nil {
+		model = *m
+	}
+	client := h.openaiClientFrom(key, model)
+	if req.Check == "model" {
+		if err := client.CheckModel(c.Request.Context()); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"ok": false, "error": err.Error(), "model": client.Model})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true, "model": client.Model, "message": "Model " + client.Model + " is available"})
+		return
+	}
+	if err := client.Validate(c.Request.Context()); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "model": client.Model, "message": "API key works"})
+}
+
+func (h *Handler) testLine(c *gin.Context) {
+	var req struct {
+		LineChannelAccessToken *string `json:"line_channel_access_token"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	_, token := h.lineCreds(c)
+	if t := omitBlank(req.LineChannelAccessToken); t != nil {
+		token = *t
+	}
+	client := linebot.NewClient(token)
+	info, err := client.GetBotInfo(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	out := gin.H{
+		"ok":        true,
+		"bot_name":  info.DisplayName,
+		"bot_id":    info.BasicID,
+		"chat_mode": info.ChatMode,
+	}
+	if n, ferr := client.CountFollowers(c.Request.Context()); ferr == nil {
+		out["friend_count"] = n
+	}
+	if hh, herr := h.svc.EnsureHousehold(c.Request.Context()); herr == nil {
+		if n, cerr := h.svc.Repo().CountLineIdentities(c.Request.Context(), hh.ID); cerr == nil {
+			out["linked_users"] = n
+		}
+	}
+	msg := "LINE messaging token works"
+	if info.DisplayName != "" {
+		msg += " for " + info.DisplayName
+	}
+	if n, ok := out["friend_count"].(int); ok {
+		msg += fmt.Sprintf(". %d friend(s) on the official account", n)
+	}
+	if n, ok := out["linked_users"].(int); ok {
+		msg += fmt.Sprintf(". %d user(s) have messaged this bot", n)
+	}
+	out["message"] = msg
+	c.JSON(http.StatusOK, out)
+}
+
 func (h *Handler) openaiCreds(c *gin.Context) (key, model string) {
 	key = ai.NormalizeKey(h.cfg.OpenAIAPIKey)
 	model = strings.TrimSpace(h.cfg.OpenAIModel)
@@ -78,9 +175,29 @@ func (h *Handler) openaiCreds(c *gin.Context) (key, model string) {
 	return key, ai.DefaultModel(key, model)
 }
 
+func (h *Handler) openaiClientFrom(key, model string) *ai.Client {
+	return ai.NewWithBase(key, model, h.cfg.OpenAIBaseURL)
+}
+
 func (h *Handler) openaiClient(c *gin.Context) *ai.Client {
 	key, model := h.openaiCreds(c)
-	return ai.NewWithBase(key, model, h.cfg.OpenAIBaseURL)
+	return h.openaiClientFrom(key, model)
+}
+
+func (h *Handler) lineCreds(c *gin.Context) (secret, token string) {
+	secret = h.cfg.LineChannelSecret
+	token = h.cfg.LineChannelAccessToken
+	hh, err := h.svc.EnsureHousehold(c.Request.Context())
+	if err == nil {
+		_, _, s, t, _ := h.svc.Repo().GetSettingsSecrets(c.Request.Context(), hh.ID)
+		if secret == "" {
+			secret = s
+		}
+		if token == "" {
+			token = t
+		}
+	}
+	return
 }
 
 func (h *Handler) parseReceipt(c *gin.Context) {

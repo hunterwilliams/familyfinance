@@ -40,22 +40,93 @@ export default function SettingsPanel({ members, accounts, onAccountsChanged, on
     setMemberDrafts(next);
   }, [members]);
 
-  const save = async () => {
+  const saveModel = async () => {
     setError('');
-    const body: Record<string, string> = { openai_model: model.trim() };
-    const key = openai.trim();
-    if (key) body.openai_api_key = key;
-    if (lineSecret) body.line_channel_secret = lineSecret;
-    if (lineToken) body.line_channel_access_token = lineToken;
+    setMsg('');
+    if (!model.trim()) return;
+    try {
+      const next = await api.patchSettings({ openai_model: model.trim() });
+      setS(next);
+      setMsg('Model saved (API key unchanged)');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed');
+    }
+  };
+
+  const saveLine = async () => {
+    setError('');
+    setMsg('');
+    const body: Record<string, string> = {};
+    if (lineSecret.trim()) body.line_channel_secret = lineSecret.trim();
+    if (lineToken.trim()) body.line_channel_access_token = lineToken.trim();
+    if (!Object.keys(body).length) {
+      setError('Enter a LINE secret or access token to save');
+      return;
+    }
     try {
       const next = await api.patchSettings(body);
       setS(next);
-      setOpenai('');
       setLineSecret('');
       setLineToken('');
-      setMsg('Saved');
+      setMsg('LINE settings saved (API key unchanged)');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed');
+    }
+  };
+
+  const saveKey = async () => {
+    const key = openai.trim();
+    if (!key) return;
+    setError('');
+    setMsg('');
+    try {
+      const next = await api.patchSettings({ openai_api_key: key });
+      setS(next);
+      setOpenai('');
+      setMsg('API key saved');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save API key');
+    }
+  };
+
+  const testKey = async () => {
+    setError('');
+    setMsg('');
+    try {
+      const body: { openai_api_key?: string; openai_model?: string; check: 'key' } = { check: 'key' };
+      if (openai.trim()) body.openai_api_key = openai.trim();
+      if (model.trim()) body.openai_model = model.trim();
+      const res = await api.testAI(body);
+      setMsg(res.message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'API key test failed');
+    }
+  };
+
+  const checkModel = async () => {
+    setError('');
+    setMsg('');
+    try {
+      const body: { openai_api_key?: string; openai_model?: string; check: 'model' } = { check: 'model' };
+      if (openai.trim()) body.openai_api_key = openai.trim();
+      if (model.trim()) body.openai_model = model.trim();
+      const res = await api.testAI(body);
+      setMsg(res.message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Model check failed');
+    }
+  };
+
+  const testLine = async () => {
+    setError('');
+    setMsg('');
+    try {
+      const body: { line_channel_access_token?: string } = {};
+      if (lineToken.trim()) body.line_channel_access_token = lineToken.trim();
+      const res = await api.testLine(body);
+      setMsg(res.message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'LINE test failed');
     }
   };
 
@@ -153,22 +224,38 @@ export default function SettingsPanel({ members, accounts, onAccountsChanged, on
         <p className="muted">No personal payment methods yet.</p>
       )}
 
-      <h3 style={{ fontSize: '0.95rem', marginTop: '1.5rem' }}>Integrations</h3>
-      <p className="muted">A key saved here is used instead of environment variables. OpenRouter keys start with sk-or-, OpenAI with sk-, xAI with xai-.</p>
+      <h3 style={{ fontSize: '0.95rem', marginTop: '1.5rem' }}>AI</h3>
+      <p className="muted">A key saved here is used instead of environment variables. OpenRouter keys start with sk-or-, OpenAI with sk-, xAI with xai-. Saving the model does not change the API key.</p>
       <div className="form-col">
-        <label>OpenAI model
+        <label>Model
           <input value={model} onChange={(e) => setModel(e.target.value)} />
         </label>
+        <div className="btn-row">
+          <button type="button" onClick={saveModel} disabled={!model.trim()}>Save model</button>
+          <button type="button" className="secondary" onClick={checkModel}>Check model</button>
+        </div>
         <label>AI API key {s?.has_openai_key ? '(set)' : '(not set)'}
           <input type="password" placeholder="sk-or-..., sk-..., or xai-..." value={openai} onChange={(e) => setOpenai(e.target.value)} autoComplete="off" />
         </label>
-        <label>LINE Messaging channel secret {s?.has_line_secret ? '(set)' : ''}
-          <input type="password" value={lineSecret} onChange={(e) => setLineSecret(e.target.value)} />
+        <div className="btn-row">
+          <button type="button" onClick={saveKey} disabled={!openai.trim()}>Save API key</button>
+          <button type="button" className="secondary" onClick={testKey}>Test API key</button>
+        </div>
+      </div>
+
+      <h3 style={{ fontSize: '0.95rem', marginTop: '1.5rem' }}>LINE messaging</h3>
+      <p className="muted">Used by the bot to reply in LINE. Test checks the access token, friend count when available, and how many people have already messaged the bot.</p>
+      <div className="form-col">
+        <label>Channel secret {s?.has_line_secret ? '(set)' : '(not set)'}
+          <input type="password" value={lineSecret} onChange={(e) => setLineSecret(e.target.value)} autoComplete="off" />
         </label>
-        <label>LINE Messaging access token {s?.has_line_token ? '(set)' : ''}
-          <input type="password" value={lineToken} onChange={(e) => setLineToken(e.target.value)} />
+        <label>Access token {s?.has_line_token ? '(set)' : '(not set)'}
+          <input type="password" value={lineToken} onChange={(e) => setLineToken(e.target.value)} autoComplete="off" />
         </label>
-        <button type="button" onClick={save}>Save</button>
+        <div className="btn-row">
+          <button type="button" onClick={saveLine} disabled={!lineSecret.trim() && !lineToken.trim()}>Save LINE</button>
+          <button type="button" className="secondary" onClick={testLine}>Test LINE</button>
+        </div>
       </div>
     </div>
   );

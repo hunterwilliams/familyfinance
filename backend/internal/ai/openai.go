@@ -166,24 +166,71 @@ func (c *Client) ParseReceiptImage(ctx context.Context, imageBase64, mime string
 }
 
 func (c *Client) Validate(ctx context.Context) error {
+	_, err := c.ListModels(ctx)
+	return err
+}
+
+func (c *Client) ListModels(ctx context.Context) ([]string, error) {
 	if c.APIKey == "" {
-		return fmt.Errorf("API key is not set")
+		return nil, fmt.Errorf("API key is not set")
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/models", nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	c.setAuth(req)
 	res, err := c.HTTP.Do(req)
 	if err != nil {
-		return fmt.Errorf("could not reach AI API: %w", err)
+		return nil, fmt.Errorf("could not reach AI API: %w", err)
 	}
 	defer res.Body.Close()
 	payload, _ := io.ReadAll(res.Body)
 	if res.StatusCode >= 300 {
-		return apiError(res.StatusCode, payload)
+		return nil, apiError(res.StatusCode, payload)
 	}
-	return nil
+	var parsed struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &parsed); err != nil {
+		return nil, fmt.Errorf("could not parse models list")
+	}
+	ids := make([]string, 0, len(parsed.Data))
+	for _, m := range parsed.Data {
+		if m.ID != "" {
+			ids = append(ids, m.ID)
+		}
+	}
+	return ids, nil
+}
+
+func (c *Client) CheckModel(ctx context.Context) error {
+	ids, err := c.ListModels(ctx)
+	if err != nil {
+		return err
+	}
+	if modelListed(ids, c.Model) {
+		return nil
+	}
+	if len(ids) == 0 {
+		return fmt.Errorf("API key works, but the provider returned no models")
+	}
+	return fmt.Errorf("model %s is not available with this key", c.Model)
+}
+
+func modelListed(ids []string, model string) bool {
+	want := strings.ToLower(strings.TrimSpace(model))
+	if want == "" {
+		return false
+	}
+	for _, id := range ids {
+		got := strings.ToLower(id)
+		if got == want || strings.HasSuffix(got, "/"+want) || strings.HasSuffix(want, "/"+got) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Client) chat(ctx context.Context, messages []map[string]any) (string, error) {

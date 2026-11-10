@@ -205,6 +205,20 @@ export const api = {
   getSettings: () => request<HouseholdSettings>('/api/v1/settings'),
   patchSettings: (body: Record<string, string>) =>
     request<HouseholdSettings>('/api/v1/settings', { method: 'PATCH', body: JSON.stringify(body) }),
+  testAI: (body: { openai_api_key?: string; openai_model?: string; check: 'key' | 'model' }) =>
+    request<{ ok: boolean; model?: string; message: string }>('/api/v1/settings/test-ai', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  testLine: (body?: { line_channel_access_token?: string }) =>
+    request<{
+      ok: boolean;
+      bot_name?: string;
+      bot_id?: string;
+      friend_count?: number;
+      linked_users?: number;
+      message: string;
+    }>('/api/v1/settings/test-line', { method: 'POST', body: JSON.stringify(body ?? {}) }),
   parseReceipt: (file: File) => {
     const fd = new FormData();
     fd.append('file', file);

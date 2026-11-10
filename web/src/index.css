@@ -232,6 +232,26 @@ main {
 .form-col { display: flex; flex-direction: column; gap: 0.75rem; max-width: 420px; }
 .form-col label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.875rem; }
 .form-col input { padding: 0.45rem 0.75rem; border: 1px solid #d1d5db; border-radius: 6px; }
+.btn-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.btn-row button,
+.form-col button {
+  padding: 0.45rem 0.75rem;
+  border: 1px solid #4f46e5;
+  border-radius: 6px;
+  background: #4f46e5;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+.btn-row button.secondary {
+  background: #fff;
+  color: #374151;
+  border-color: #d1d5db;
+}
+.btn-row button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .member-names { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
 @media (max-width: 640px) {
   .member-names { grid-template-columns: 1fr; }
@@ -244,6 +264,28 @@ main {
   border-radius: 6px;
   cursor: pointer;
   font-size: 0.875rem;
+}
+.file-btn.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.processing {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #4f46e5;
+  font-size: 0.875rem;
+}
+.spinner {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid #c7d2fe;
+  border-top-color: #4f46e5;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 .list-block { margin-top: 1rem; }
 .app-header .tabs { flex-wrap: wrap; }

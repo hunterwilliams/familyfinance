@@ -54,3 +54,20 @@ func TestValidateOK(t *testing.T) {
 	c := NewWithBase(" sk-good ", "gpt-4o", srv.URL)
 	require.NoError(t, c.Validate(context.Background()))
 }
+
+func TestCheckModel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/models", r.URL.Path)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":[{"id":"openai/gpt-4o"},{"id":"anthropic/claude-sonnet-4"}]}`))
+	}))
+	defer srv.Close()
+
+	ok := NewWithBase("sk-or-v1-abc", "gpt-4o", srv.URL)
+	require.NoError(t, ok.CheckModel(context.Background()))
+
+	missing := NewWithBase("sk-or-v1-abc", "not-a-model", srv.URL)
+	err := missing.CheckModel(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not-a-model")
+}

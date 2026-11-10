@@ -2,6 +2,7 @@ package linebot
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
@@ -9,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -58,6 +60,98 @@ func (c *Client) Reply(replyToken, text string) error {
 		return fmt.Errorf("line reply: %s", body)
 	}
 	return nil
+}
+
+type BotInfo struct {
+	UserID      string `json:"userId"`
+	BasicID     string `json:"basicId"`
+	PremiumID   string `json:"premiumId"`
+	DisplayName string `json:"displayName"`
+	ChatMode    string `json:"chatMode"`
+}
+
+func (c *Client) GetBotInfo(ctx context.Context) (BotInfo, error) {
+	var info BotInfo
+	if c.AccessToken == "" {
+		return info, fmt.Errorf("LINE access token is not set")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.line.me/v2/bot/info", nil)
+	if err != nil {
+		return info, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.AccessToken)
+	res, err := c.HTTP.Do(req)
+	if err != nil {
+		return info, fmt.Errorf("could not reach LINE API: %w", err)
+	}
+	defer res.Body.Close()
+	body, _ := io.ReadAll(res.Body)
+	if res.StatusCode >= 300 {
+		return info, lineAPIError(res.StatusCode, body)
+	}
+	if err := json.Unmarshal(body, &info); err != nil {
+		return info, fmt.Errorf("could not parse LINE bot info")
+	}
+	return info, nil
+}
+
+func (c *Client) CountFollowers(ctx context.Context) (int, error) {
+	if c.AccessToken == "" {
+		return 0, fmt.Errorf("LINE access token is not set")
+	}
+	count := 0
+	start := ""
+	for i := 0; i < 10; i++ {
+		u := "https://api.line.me/v2/bot/followers/ids?limit=1000"
+		if start != "" {
+			u += "&start=" + url.QueryEscape(start)
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+		if err != nil {
+			return count, err
+		}
+		req.Header.Set("Authorization", "Bearer "+c.AccessToken)
+		res, err := c.HTTP.Do(req)
+		if err != nil {
+			return count, fmt.Errorf("could not reach LINE API: %w", err)
+		}
+		body, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		if res.StatusCode >= 300 {
+			return count, lineAPIError(res.StatusCode, body)
+		}
+		var page struct {
+			UserIDs []string `json:"userIds"`
+			Next    string   `json:"next"`
+		}
+		if err := json.Unmarshal(body, &page); err != nil {
+			return count, fmt.Errorf("could not parse LINE friends list")
+		}
+		count += len(page.UserIDs)
+		if page.Next == "" {
+			return count, nil
+		}
+		start = page.Next
+	}
+	return count, nil
+}
+
+func lineAPIError(status int, payload []byte) error {
+	var parsed struct {
+		Message string `json:"message"`
+	}
+	_ = json.Unmarshal(payload, &parsed)
+	msg := parsed.Message
+	if msg == "" {
+		msg = string(payload)
+	}
+	if status == 401 {
+		return fmt.Errorf("invalid LINE access token")
+	}
+	if msg != "" {
+		return fmt.Errorf("LINE API: %s", msg)
+	}
+	return fmt.Errorf("LINE API: HTTP %d", status)
 }
 
 func (c *Client) GetContent(messageID string) ([]byte, string, error) {

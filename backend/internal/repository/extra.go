@@ -106,6 +106,12 @@ func (r *Repository) UpsertLineIdentity(ctx context.Context, id models.LineIdent
 	return err
 }
 
+func (r *Repository) CountLineIdentities(ctx context.Context, householdID uuid.UUID) (int, error) {
+	var n int
+	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM line_identities WHERE household_id = $1`, householdID).Scan(&n)
+	return n, err
+}
+
 func (r *Repository) BindLineMember(ctx context.Context, lineUserID string, memberID uuid.UUID) error {
 	_, err := r.pool.Exec(ctx, `UPDATE line_identities SET member_id = $2 WHERE line_user_id = $1`, lineUserID, memberID)
 	return err

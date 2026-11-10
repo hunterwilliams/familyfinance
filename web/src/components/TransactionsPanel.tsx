@@ -20,6 +20,7 @@ export default function TransactionsPanel({ members, accounts, categories, onAcc
   const [accountId, setAccountId] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [draft, setDraft] = useState<{ merchant?: string; date?: string; amount_satang?: number; paid_by?: string } | null>(null);
+  const [parsing, setParsing] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -76,6 +77,8 @@ export default function TransactionsPanel({ members, accounts, categories, onAcc
 
   const onFile = async (file: File) => {
     setError('');
+    setDraft(null);
+    setParsing(true);
     try {
       const parsed = await api.parseReceipt(file);
       if (parsed.merchant) setDesc(parsed.merchant);
@@ -94,6 +97,8 @@ export default function TransactionsPanel({ members, accounts, categories, onAcc
       setDraft({ ...parsed, paid_by: paidByLabel });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Parse failed');
+    } finally {
+      setParsing(false);
     }
   };
 
@@ -105,7 +110,13 @@ export default function TransactionsPanel({ members, accounts, categories, onAcc
         <button type="button" className={view === 'grid' ? '' : 'secondary'} onClick={() => setView('grid')}>Grid</button>
       </div>
       {error && <p className="error">{error}</p>}
-      {draft && (
+      {parsing && (
+        <p className="processing" aria-live="polite">
+          <span className="spinner" aria-hidden="true" />
+          Reading receipt…
+        </p>
+      )}
+      {draft && !parsing && (
         <p className="success">
           Receipt suggestion loaded{draft.paid_by ? ` — ${draft.paid_by}` : ''} — review and add.
         </p>
@@ -135,9 +146,19 @@ export default function TransactionsPanel({ members, accounts, categories, onAcc
           {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
         <button type="button" onClick={add} disabled={!amount || (paidBy === 'joint' && !accountId)}>Add</button>
-        <label className="file-btn">
-          Receipt photo
-          <input type="file" accept="image/*" hidden onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
+        <label className={`file-btn${parsing ? ' disabled' : ''}`}>
+          {parsing ? 'Processing…' : 'Receipt photo'}
+          <input
+            type="file"
+            accept="image/*"
+            hidden
+            disabled={parsing}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (file) onFile(file);
+            }}
+          />
         </label>
       </div>
       {view === 'list' ? (
