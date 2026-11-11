@@ -237,6 +237,17 @@ func (r *Repository) UpdateCaregiver(ctx context.Context, c models.Caregiver) (m
 	return c, err
 }
 
+func (r *Repository) DeleteCaregiver(ctx context.Context, householdID, id uuid.UUID) error {
+	tag, err := r.pool.Exec(ctx, `DELETE FROM caregivers WHERE household_id = $1 AND id = $2`, householdID, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
 func normalizeCaregiverClocks(c *models.Caregiver) {
 	c.DefaultStartTime = clockPtr(c.DefaultStartTime)
 	c.DefaultEndTime = clockPtr(c.DefaultEndTime)

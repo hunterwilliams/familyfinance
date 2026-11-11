@@ -94,6 +94,11 @@ export default function NannyPanel() {
         };
       }
       setEdits(next);
+      setForm((prev) => {
+        const stillThere = list.some((c) => c.id === prev.caregiver_id);
+        if (stillThere) return prev;
+        return { ...prev, caregiver_id: list[0]?.id ?? '' };
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed');
     }
@@ -132,6 +137,14 @@ export default function NannyPanel() {
       active: true,
     });
     setMsg('Nanny updated');
+    await load();
+  };
+
+  const removeCaregiver = async (id: string, name: string) => {
+    if (!window.confirm(`Remove ${name}? Their extra-hour logs will be deleted too.`)) return;
+    setError('');
+    await api.deleteCaregiver(id);
+    setMsg('Nanny removed');
     await load();
   };
 
@@ -270,6 +283,7 @@ export default function NannyPanel() {
                 />
               </label>
               <button type="button" onClick={() => saveCaregiver(c.id)} disabled={!d.name.trim()}>Save</button>
+              <button type="button" className="secondary" onClick={() => removeCaregiver(c.id, d.name.trim() || c.name)}>Remove</button>
             </div>
             <DayToggles
               label={`Usual days for ${c.name}`}
@@ -295,7 +309,7 @@ export default function NannyPanel() {
       <h3>Log extra hours</h3>
       <div className="toolbar">
         <select value={form.caregiver_id} onChange={(e) => setForm({ ...form, caregiver_id: e.target.value })}>
-          <option value="">Caregiver</option>
+          <option value="">Nanny</option>
           {caregivers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
         <input type="date" value={form.work_date} onChange={(e) => setForm({ ...form, work_date: e.target.value })} />

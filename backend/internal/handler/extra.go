@@ -320,6 +320,19 @@ func (h *Handler) updateCaregiver(c *gin.Context) {
 	c.JSON(http.StatusOK, item)
 }
 
+func (h *Handler) deleteCaregiver(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	if err := h.svc.DeleteCaregiver(c.Request.Context(), id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 func (h *Handler) listCaregiverHours(c *gin.Context) {
 	month := c.Query("month")
 	if month == "" {

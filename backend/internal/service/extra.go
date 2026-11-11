@@ -80,6 +80,14 @@ func (s *Service) UpdateCaregiver(ctx context.Context, c models.Caregiver) (mode
 	return s.repo.UpdateCaregiver(ctx, c)
 }
 
+func (s *Service) DeleteCaregiver(ctx context.Context, id uuid.UUID) error {
+	h, err := s.EnsureHousehold(ctx)
+	if err != nil {
+		return err
+	}
+	return s.repo.DeleteCaregiver(ctx, h.ID, id)
+}
+
 func normalizeCaregiverTimes(c *models.Caregiver) {
 	c.DefaultStartTime = blankTimeNil(c.DefaultStartTime)
 	c.DefaultEndTime = blankTimeNil(c.DefaultEndTime)

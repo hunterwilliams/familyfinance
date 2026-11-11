@@ -82,6 +82,7 @@ func (h *Handler) Register(r *gin.Engine) {
 		v1.GET("/caregivers", h.listCaregivers)
 		v1.POST("/caregivers", h.createCaregiver)
 		v1.PATCH("/caregivers/:id", h.updateCaregiver)
+		v1.DELETE("/caregivers/:id", h.deleteCaregiver)
 		v1.GET("/caregiver-hours", h.listCaregiverHours)
 		v1.POST("/caregiver-hours", h.createCaregiverHours)
 		v1.GET("/paid-holidays", h.listPaidHolidays)

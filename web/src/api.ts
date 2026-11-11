@@ -270,6 +270,8 @@ export const api = {
     request<Caregiver>('/api/v1/caregivers', { method: 'POST', body: JSON.stringify(body) }),
   updateCaregiver: (id: string, body: Partial<Caregiver>) =>
     request<Caregiver>(`/api/v1/caregivers/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteCaregiver: (id: string) =>
+    request<void>(`/api/v1/caregivers/${id}`, { method: 'DELETE' }),
   getCaregiverHours: (month: string) => requestList<HourEntry>(`/api/v1/caregiver-hours?month=${month}`),
   createCaregiverHours: (body: Record<string, unknown>) =>
     request<HourEntry>('/api/v1/caregiver-hours', { method: 'POST', body: JSON.stringify(body) }),
