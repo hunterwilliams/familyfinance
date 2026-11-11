@@ -34,6 +34,16 @@ function toggleDay(days: number[], id: number) {
   return days.includes(id) ? days.filter((d) => d !== id) : [...days, id];
 }
 
+function isPlaceholderName(name: string) {
+  return /^caregiver$/i.test(name.trim());
+}
+
+function defaultNannyId(list: Caregiver[], current?: string) {
+  if (current && list.some((c) => c.id === current)) return current;
+  const named = list.filter((c) => !isPlaceholderName(c.name));
+  return (named[0] ?? list[0])?.id ?? '';
+}
+
 type Edit = { name: string; rate: string; start: string; end: string; days: number[] };
 
 function DayToggles({ days, onChange, label }: { days: number[]; onChange: (days: number[]) => void; label: string }) {
@@ -55,6 +65,7 @@ function DayToggles({ days, onChange, label }: { days: number[]; onChange: (days
 }
 
 export default function NannyPanel() {
+  const [page, setPage] = useState<'hours' | 'manage'>('hours');
   const [caregivers, setCaregivers] = useState<Caregiver[]>([]);
   const [entries, setEntries] = useState<HourEntry[]>([]);
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
@@ -94,11 +105,7 @@ export default function NannyPanel() {
         };
       }
       setEdits(next);
-      setForm((prev) => {
-        const stillThere = list.some((c) => c.id === prev.caregiver_id);
-        if (stillThere) return prev;
-        return { ...prev, caregiver_id: list[0]?.id ?? '' };
-      });
+      setForm((prev) => ({ ...prev, caregiver_id: defaultNannyId(list, prev.caregiver_id) }));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed');
     }
@@ -140,8 +147,8 @@ export default function NannyPanel() {
     await load();
   };
 
-  const removeCaregiver = async (id: string, name: string) => {
-    if (!window.confirm(`Remove ${name}? Their extra-hour logs will be deleted too.`)) return;
+  const removeCaregiver = async (id: string, nannyName: string) => {
+    if (!window.confirm(`Remove ${nannyName}? Their extra-hour logs will be deleted too.`)) return;
     setError('');
     await api.deleteCaregiver(id);
     setMsg('Nanny removed');
@@ -222,137 +229,176 @@ export default function NannyPanel() {
     return { c, extra, holiday, net, cost: net * c.hourly_rate_satang };
   });
 
+  const goManage = () => {
+    setError('');
+    setMsg('');
+    setPage('manage');
+  };
+
+  const goHours = () => {
+    setError('');
+    setMsg('');
+    setPage('hours');
+  };
+
   return (
     <div className="panel">
-      <h2>Nanny extra hours</h2>
-      <p className="muted">Usual days and hours are unpaid. Extra time (come early) adds hours to pay. A personal day off on a usual work day offsets extra. Thai government paid holidays do not change hours owed unless they work — then the usual shift is extra pay.</p>
-      {error && <p className="error">{error}</p>}
-      {msg && <p className="success">{msg}</p>}
-      <div className="toolbar">
-        <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
-      </div>
-      <div className="stat-grid">
-        {totals.map(({ c, extra, holiday, net, cost }) => (
-          <div key={c.id} className="stat-card">
-            <div className="label">{c.name}</div>
-            <div className="value">{net.toFixed(1)} h net</div>
-            <div className="muted">
-              {extra.toFixed(1)} extra · {holiday.toFixed(1)} holiday · {formatTHB(cost)}
-            </div>
-            <div className="muted">
-              {formatDays(c.default_weekdays)}
-              {c.default_start_time && c.default_end_time
-                ? ` · ${clockValue(c.default_start_time)}–${clockValue(c.default_end_time)}`
-                : ''}
-              {` · ${formatTHB(c.hourly_rate_satang)}/h`}
-            </div>
+      {page === 'hours' ? (
+        <>
+          <div className="toolbar" style={{ justifyContent: 'space-between' }}>
+            <h2 style={{ margin: 0 }}>Nanny extra hours</h2>
+            <button type="button" className="secondary" onClick={goManage}>Manage nannies</button>
           </div>
-        ))}
-      </div>
-      <h3>Nanny</h3>
-      {caregivers.map((c) => {
-        const d = edits[c.id] || { name: c.name, rate: '', start: '09:00', end: '18:00', days: [...DEFAULT_DAYS] };
-        return (
-          <div key={c.id} style={{ marginBottom: '1rem' }}>
-            <div className="toolbar">
-              <input
-                aria-label={`Name for ${c.name}`}
-                placeholder="Name"
-                value={d.name}
-                onChange={(e) => setEdits((prev) => ({ ...prev, [c.id]: { ...d, name: e.target.value } }))}
-              />
-              <input
-                aria-label={`Rate for ${c.name}`}
-                placeholder="THB / hour"
-                type="number"
-                value={d.rate}
-                onChange={(e) => setEdits((prev) => ({ ...prev, [c.id]: { ...d, rate: e.target.value } }))}
-              />
-              <label className="muted">Usual start
-                <input
-                  type="time"
-                  value={d.start}
-                  onChange={(e) => setEdits((prev) => ({ ...prev, [c.id]: { ...d, start: e.target.value } }))}
-                />
-              </label>
-              <label className="muted">Usual end
-                <input
-                  type="time"
-                  value={d.end}
-                  onChange={(e) => setEdits((prev) => ({ ...prev, [c.id]: { ...d, end: e.target.value } }))}
-                />
-              </label>
-              <button type="button" onClick={() => saveCaregiver(c.id)} disabled={!d.name.trim()}>Save</button>
-              <button type="button" className="secondary" onClick={() => removeCaregiver(c.id, d.name.trim() || c.name)}>Remove</button>
-            </div>
-            <DayToggles
-              label={`Usual days for ${c.name}`}
-              days={d.days}
-              onChange={(days) => setEdits((prev) => ({ ...prev, [c.id]: { ...d, days } }))}
-            />
+          <p className="muted">Usual days and hours are unpaid. Extra time (come early) adds hours to pay. A personal day off on a usual work day offsets extra. Thai government paid holidays do not change hours owed unless they work — then the usual shift is extra pay.</p>
+          {error && <p className="error">{error}</p>}
+          {msg && <p className="success">{msg}</p>}
+          <div className="toolbar">
+            <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
           </div>
-        );
-      })}
-      <h3>Add nanny</h3>
-      <div className="toolbar">
-        <input placeholder="Name / nickname" value={name} onChange={(e) => setName(e.target.value)} />
-        <input placeholder="THB / hour" type="number" value={rate} onChange={(e) => setRate(e.target.value)} />
-        <label className="muted">Usual start
-          <input type="time" value={defaultStart} onChange={(e) => setDefaultStart(e.target.value)} />
-        </label>
-        <label className="muted">Usual end
-          <input type="time" value={defaultEnd} onChange={(e) => setDefaultEnd(e.target.value)} />
-        </label>
-        <button type="button" onClick={addCaregiver} disabled={!name || !rate}>Add</button>
-      </div>
-      <DayToggles label="Usual days for new nanny" days={defaultDays} onChange={setDefaultDays} />
-      <h3>Log extra hours</h3>
-      <div className="toolbar">
-        <select value={form.caregiver_id} onChange={(e) => setForm({ ...form, caregiver_id: e.target.value })}>
-          <option value="">Nanny</option>
-          {caregivers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-        <input type="date" value={form.work_date} onChange={(e) => setForm({ ...form, work_date: e.target.value })} />
-        <input type="time" value={form.start_time} onChange={(e) => setForm({ ...form, start_time: e.target.value })} />
-        <input type="time" value={form.end_time} onChange={(e) => setForm({ ...form, end_time: e.target.value })} />
-        <input placeholder="Note" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
-        <button type="button" onClick={addHours} disabled={!form.caregiver_id}>Log extra</button>
-        <button type="button" className="secondary" onClick={addHoliday} disabled={!form.caregiver_id}>Log day off</button>
-        <button type="button" className="secondary" onClick={addWorkedHoliday} disabled={!form.caregiver_id}>Log worked holiday</button>
-      </div>
-      {paidOnDate(form.work_date) && (
-        <p className="muted">{form.work_date} is a paid holiday ({paidOnDate(form.work_date)?.name}). Day off does not offset hours. Log worked holiday if they came in.</p>
+          <div className="stat-grid">
+            {totals.map(({ c, extra, holiday, net, cost }) => (
+              <div key={c.id} className="stat-card">
+                <div className="label">{c.name}</div>
+                <div className="value">{net.toFixed(1)} h net</div>
+                <div className="muted">
+                  {extra.toFixed(1)} extra · {holiday.toFixed(1)} holiday · {formatTHB(cost)}
+                </div>
+                <div className="muted">
+                  {formatDays(c.default_weekdays)}
+                  {c.default_start_time && c.default_end_time
+                    ? ` · ${clockValue(c.default_start_time)}–${clockValue(c.default_end_time)}`
+                    : ''}
+                  {` · ${formatTHB(c.hourly_rate_satang)}/h`}
+                </div>
+              </div>
+            ))}
+          </div>
+          <h3>Log extra hours</h3>
+          {caregivers.length === 0 ? (
+            <p className="muted">Add a nanny under Manage nannies first.</p>
+          ) : (
+            <>
+              <div className="toolbar">
+                <select
+                  aria-label="Nanny"
+                  value={form.caregiver_id}
+                  onChange={(e) => setForm({ ...form, caregiver_id: e.target.value })}
+                >
+                  {caregivers.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                <input type="date" value={form.work_date} onChange={(e) => setForm({ ...form, work_date: e.target.value })} />
+                <input type="time" value={form.start_time} onChange={(e) => setForm({ ...form, start_time: e.target.value })} />
+                <input type="time" value={form.end_time} onChange={(e) => setForm({ ...form, end_time: e.target.value })} />
+                <input placeholder="Note" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
+                <button type="button" onClick={addHours} disabled={!form.caregiver_id}>Log extra</button>
+                <button type="button" className="secondary" onClick={addHoliday} disabled={!form.caregiver_id}>Log day off</button>
+                <button type="button" className="secondary" onClick={addWorkedHoliday} disabled={!form.caregiver_id}>Log worked holiday</button>
+              </div>
+              {paidOnDate(form.work_date) && (
+                <p className="muted">{form.work_date} is a paid holiday ({paidOnDate(form.work_date)?.name}). Day off does not offset hours. Log worked holiday if they came in.</p>
+              )}
+            </>
+          )}
+          <ul className="debt-list">
+            {entries.map((e) => {
+              const cg = caregivers.find((c) => c.id === e.caregiver_id);
+              const holiday = e.kind === 'holiday' || e.hours < 0;
+              const worked = e.kind === 'worked_holiday';
+              return (
+                <li key={e.id}>
+                  {e.work_date.slice(0, 10)} · {cg?.name} · {e.hours}h
+                  {worked ? ' worked holiday' : holiday ? ' day off' : ' extra'}
+                  {e.start_time && e.end_time ? ` (${clockValue(e.start_time)}–${clockValue(e.end_time)})` : ''}
+                  {e.note ? ` — ${e.note}` : ''}
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      ) : (
+        <>
+          <div className="toolbar" style={{ justifyContent: 'space-between' }}>
+            <h2 style={{ margin: 0 }}>Manage nannies</h2>
+            <button type="button" className="secondary" onClick={goHours}>Back to hours</button>
+          </div>
+          {error && <p className="error">{error}</p>}
+          {msg && <p className="success">{msg}</p>}
+          <h3>Nannies</h3>
+          {caregivers.map((c) => {
+            const d = edits[c.id] || { name: c.name, rate: '', start: '09:00', end: '18:00', days: [...DEFAULT_DAYS] };
+            return (
+              <div key={c.id} style={{ marginBottom: '1rem' }}>
+                <div className="toolbar">
+                  <input
+                    aria-label={`Name for ${c.name}`}
+                    placeholder="Name"
+                    value={d.name}
+                    onChange={(e) => setEdits((prev) => ({ ...prev, [c.id]: { ...d, name: e.target.value } }))}
+                  />
+                  <input
+                    aria-label={`Rate for ${c.name}`}
+                    placeholder="THB / hour"
+                    type="number"
+                    value={d.rate}
+                    onChange={(e) => setEdits((prev) => ({ ...prev, [c.id]: { ...d, rate: e.target.value } }))}
+                  />
+                  <label className="muted">Usual start
+                    <input
+                      type="time"
+                      value={d.start}
+                      onChange={(e) => setEdits((prev) => ({ ...prev, [c.id]: { ...d, start: e.target.value } }))}
+                    />
+                  </label>
+                  <label className="muted">Usual end
+                    <input
+                      type="time"
+                      value={d.end}
+                      onChange={(e) => setEdits((prev) => ({ ...prev, [c.id]: { ...d, end: e.target.value } }))}
+                    />
+                  </label>
+                  <button type="button" onClick={() => saveCaregiver(c.id)} disabled={!d.name.trim()}>Save</button>
+                  <button type="button" className="secondary" onClick={() => removeCaregiver(c.id, d.name.trim() || c.name)}>Remove</button>
+                </div>
+                <DayToggles
+                  label={`Usual days for ${c.name}`}
+                  days={d.days}
+                  onChange={(days) => setEdits((prev) => ({ ...prev, [c.id]: { ...d, days } }))}
+                />
+              </div>
+            );
+          })}
+          <h3>Add nanny</h3>
+          <div className="toolbar">
+            <input placeholder="Name / nickname" value={name} onChange={(e) => setName(e.target.value)} />
+            <input placeholder="THB / hour" type="number" value={rate} onChange={(e) => setRate(e.target.value)} />
+            <label className="muted">Usual start
+              <input type="time" value={defaultStart} onChange={(e) => setDefaultStart(e.target.value)} />
+            </label>
+            <label className="muted">Usual end
+              <input type="time" value={defaultEnd} onChange={(e) => setDefaultEnd(e.target.value)} />
+            </label>
+            <button type="button" onClick={addCaregiver} disabled={!name || !rate}>Add</button>
+          </div>
+          <DayToggles label="Usual days for new nanny" days={defaultDays} onChange={setDefaultDays} />
+          <h3>Paid holidays</h3>
+          <p className="muted">Starts as the 2026 Thai government list. Add or remove dates. These are paid and do not create time owed unless they work.</p>
+          <div className="toolbar">
+            <input type="date" value={holidayDate} onChange={(e) => setHolidayDate(e.target.value)} aria-label="Paid holiday date" />
+            <input placeholder="Name (e.g. Songkran)" value={holidayName} onChange={(e) => setHolidayName(e.target.value)} />
+            <button type="button" onClick={addPaidHoliday} disabled={!holidayDate}>Add</button>
+          </div>
+          <ul className="debt-list">
+            {paidHolidays.map((h) => (
+              <li key={h.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center' }}>
+                <span>{h.date.slice(0, 10)} · {h.name}</span>
+                <button type="button" className="secondary" onClick={() => removePaidHoliday(h.id)}>Remove</button>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
-      <h3>Paid holidays</h3>
-      <p className="muted">Starts as the 2026 Thai government list. Add or remove dates. These are paid and do not create time owed unless they work.</p>
-      <div className="toolbar">
-        <input type="date" value={holidayDate} onChange={(e) => setHolidayDate(e.target.value)} aria-label="Paid holiday date" />
-        <input placeholder="Name (e.g. Songkran)" value={holidayName} onChange={(e) => setHolidayName(e.target.value)} />
-        <button type="button" onClick={addPaidHoliday} disabled={!holidayDate}>Add</button>
-      </div>
-      <ul className="debt-list">
-        {paidHolidays.map((h) => (
-          <li key={h.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center' }}>
-            <span>{h.date.slice(0, 10)} · {h.name}</span>
-            <button type="button" className="secondary" onClick={() => removePaidHoliday(h.id)}>Remove</button>
-          </li>
-        ))}
-      </ul>
-      <ul className="debt-list">
-        {entries.map((e) => {
-          const cg = caregivers.find((c) => c.id === e.caregiver_id);
-          const holiday = e.kind === 'holiday' || e.hours < 0;
-          const worked = e.kind === 'worked_holiday';
-          return (
-            <li key={e.id}>
-              {e.work_date.slice(0, 10)} · {cg?.name} · {e.hours}h
-              {worked ? ' worked holiday' : holiday ? ' day off' : ' extra'}
-              {e.start_time && e.end_time ? ` (${clockValue(e.start_time)}–${clockValue(e.end_time)})` : ''}
-              {e.note ? ` — ${e.note}` : ''}
-            </li>
-          );
-        })}
-      </ul>
     </div>
   );
 }
